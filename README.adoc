@@ -449,9 +449,11 @@ For now you can:
 
 == Software Build Requirements
 
-* Pico-W SDK 1.5.1+
+* Pico-W SDK 1.5.1+ (2.0+ for the Pico 2 W; tested w/ 1.5.1 and 2.2.0)
 * CMake 3.20+
 * C++23 compiler, e.g. GCC 12+ (tested w/ 12.2.1)
+
+NOTE: Pico 2 W (RP2350) builds (`-DPICO_BOARD=pico2_w -DPICO_PLATFORM=rp2350-arm-s`) have no PicoWOTA bootloader, so OTA updates are unavailable; flash `nevermore-controller_pico2_w.uf2` over USB (BOOTSEL) instead.
 
 == Controller Customisation
 

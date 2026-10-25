@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.20)
 include(FetchContent)
 include(cmake/pico_sdk_import.cmake)
 
+# Raspberry Pi's fork: V11 SMP kernel w/ RP2040 + RP2350 ports (upstream lacks the RP2350 ports).
 FetchContent_Declare(
   freertos_kernel
-  GIT_REPOSITORY https://github.com/FreeRTOS/FreeRTOS-Kernel.git
-  GIT_TAG smp # V202110.00-SMP
-  GIT_SHALLOW ON
+  GIT_REPOSITORY https://github.com/raspberrypi/FreeRTOS-Kernel.git
+  GIT_TAG 4f7299d6ea746b27a9dd19e87af568e34bd65b15 # main, "Add two RP2350 ports"
   SOURCE_SUBDIR "this path doesn't exist. it is here to disable the auto build inclusion"
 )
 FetchContent_Declare(
@@ -73,6 +73,28 @@ set_property(TARGET picowota PROPERTY PICOWOTA_BT_SPP "${NEVERMORE_PICO_W_BT}")
 set_property(TARGET picowota PROPERTY PICOWOTA_USB_CDC true)
 # each slot is 4 KiB (== erase sector size), want 4 slots to cycle
 set_property(TARGET picowota PROPERTY PICOWOTA_APP_STORE_SIZE 16)
+
+# picowota's bootloader is RP2040 only (boot2, RP2040 linker scripts, VTOR jump).
+# RP2350 builds have no OTA, but keep the same app store (settings) & btstack store.
+if(PICO_PLATFORM MATCHES "^rp2350")
+  set(NEVERMORE_OTA FALSE)
+  set_target_properties(picowota PROPERTIES EXCLUDE_FROM_ALL TRUE)
+else()
+  set(NEVERMORE_OTA TRUE)
+endif()
+
+function(nevermore_build_no_bootloader target)
+  if(NEVERMORE_OTA)
+    picowota_build_no_bootloader_with_app_store("${target}" picowota)
+  else()
+    pico_set_linker_script("${target}" "${CMAKE_SOURCE_DIR}/cmake/memmap_rp2350_with_app_store.ld")
+    target_link_options("${target}" PUBLIC
+      "LINKER:--defsym=app_store_len=$<TARGET_PROPERTY:picowota,PICOWOTA_APP_STORE_SIZE>k"
+      "LINKER:--defsym=bt_store_len=$<TARGET_PROPERTY:picowota,PICOWOTA_BT_STORE_SIZE>k"
+    )
+    picowota_app_store_declare("${target}" picowota)
+  endif()
+endfunction()
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 # HACK: libs often include a config header (e.g. lvgl, btstack, etc)
@@ -174,7 +196,7 @@ target_link_libraries(
          picowota_client
 )
 
-if(${PICO_BOARD} STREQUAL "pico_w")
+if(PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
   target_link_libraries(nevermore-controller PUBLIC pico_cyw43_arch_sys_freertos)
 endif()
 
@@ -224,13 +246,15 @@ add_executable(nevermore-controller-no-bootloader)
 set_target_properties(nevermore-controller-no-bootloader PROPERTIES OUTPUT_NAME "nevermore-controller_${NEVERMORE_BOARD}")
 target_link_libraries(nevermore-controller-no-bootloader PRIVATE nevermore-controller)
 pico_add_extra_outputs(nevermore-controller-no-bootloader)
-picowota_build_no_bootloader_with_app_store(nevermore-controller-no-bootloader picowota)
+nevermore_build_no_bootloader(nevermore-controller-no-bootloader)
 
-add_executable(nevermore-controller-ota)
-set_target_properties(nevermore-controller-ota PROPERTIES OUTPUT_NAME "ota-nevermore-controller_${NEVERMORE_BOARD}")
-target_link_libraries(nevermore-controller-ota PRIVATE nevermore-controller)
-pico_add_extra_outputs(nevermore-controller-ota)
-picowota_build_combined(nevermore-controller-ota picowota)
+if(NEVERMORE_OTA)
+  add_executable(nevermore-controller-ota)
+  set_target_properties(nevermore-controller-ota PROPERTIES OUTPUT_NAME "ota-nevermore-controller_${NEVERMORE_BOARD}")
+  target_link_libraries(nevermore-controller-ota PRIVATE nevermore-controller)
+  pico_add_extra_outputs(nevermore-controller-ota)
+  picowota_build_combined(nevermore-controller-ota picowota)
+endif()
 
 # Extra tools/projects
 add_subdirectory(tools/sensorium)

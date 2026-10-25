@@ -38,8 +38,17 @@ constexpr Pins PINS_DEFAULT{
         .touch_reset = 9,
 };
 
+// SDK 2.x moved the CYW43 pin defs into the board header under new names.
+#ifdef CYW43_DEFAULT_PIN_WL_REG_ON
+#define NEVERMORE_CYW43_PIN_WL_REG_ON CYW43_DEFAULT_PIN_WL_REG_ON
+#define NEVERMORE_CYW43_PIN_WL_HOST_WAKE CYW43_DEFAULT_PIN_WL_HOST_WAKE
+#else
+#define NEVERMORE_CYW43_PIN_WL_REG_ON CYW43_PIN_WL_REG_ON
+#define NEVERMORE_CYW43_PIN_WL_HOST_WAKE CYW43_PIN_WL_HOST_WAKE
+#endif
+
 // wireless SPI CS on 25
 constexpr std::initializer_list<GPIO> PINS_RESERVED_BOARD{
-        CYW43_PIN_WL_REG_ON, CYW43_PIN_WL_HOST_WAKE, 25, PICO_VSYS_PIN};
+        NEVERMORE_CYW43_PIN_WL_REG_ON, NEVERMORE_CYW43_PIN_WL_HOST_WAKE, 25, PICO_VSYS_PIN};
 
 }  // namespace nevermore

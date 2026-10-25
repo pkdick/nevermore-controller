@@ -1,6 +1,7 @@
 #include "settings.hpp"
 #include "FreeRTOS.h"  // IWYU pragma: keep
 #include "config.hpp"
+#include "hardware/flash.h"  // SDK 2.x's `pico/flash.h` no longer pulls this in
 #include "led_status.hpp"
 #include "pico/flash.h"
 #include "sdk/ble_data_types.hpp"

@@ -72,7 +72,7 @@ target_link_libraries(
          picowota_client
 )
 
-if(${PICO_BOARD} STREQUAL "pico_w")
+if(PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
   target_link_libraries(nevermore-sensorium PUBLIC pico_cyw43_arch_poll)
 endif()
 
@@ -109,10 +109,12 @@ add_executable(nevermore-sensorium-no-bootloader)
 set_target_properties(nevermore-sensorium-no-bootloader PROPERTIES OUTPUT_NAME "nevermore-sensorium_${NEVERMORE_BOARD}")
 target_link_libraries(nevermore-sensorium-no-bootloader PRIVATE nevermore-sensorium)
 pico_add_extra_outputs(nevermore-sensorium-no-bootloader)
-picowota_build_no_bootloader_with_app_store(nevermore-sensorium-no-bootloader picowota)
+nevermore_build_no_bootloader(nevermore-sensorium-no-bootloader)
 
-add_executable(nevermore-sensorium-ota)
-set_target_properties(nevermore-sensorium-ota PROPERTIES OUTPUT_NAME "ota-nevermore-sensorium_${NEVERMORE_BOARD}")
-target_link_libraries(nevermore-sensorium-ota PRIVATE nevermore-sensorium)
-pico_add_extra_outputs(nevermore-sensorium-ota)
-picowota_build_combined(nevermore-sensorium-ota picowota)
+if(NEVERMORE_OTA)
+  add_executable(nevermore-sensorium-ota)
+  set_target_properties(nevermore-sensorium-ota PROPERTIES OUTPUT_NAME "ota-nevermore-sensorium_${NEVERMORE_BOARD}")
+  target_link_libraries(nevermore-sensorium-ota PRIVATE nevermore-sensorium)
+  pico_add_extra_outputs(nevermore-sensorium-ota)
+  picowota_build_combined(nevermore-sensorium-ota picowota)
+endif()

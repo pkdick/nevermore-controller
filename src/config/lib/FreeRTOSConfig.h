@@ -116,14 +116,25 @@
 */
 
 /* SMP port only */
-#define configNUM_CORES 2
+#define configNUMBER_OF_CORES 2
+#define configNUM_CORES configNUMBER_OF_CORES  // pre-V11 name, still read by some ports
 #define configTICK_CORE 0
 #define configRUN_MULTIPLE_PRIORITIES 1
 #define configUSE_CORE_AFFINITY 1
+#define configUSE_PASSIVE_IDLE_HOOK 0
 
-/* RP2040 specific */
+/* RP2xxx specific */
 #define configSUPPORT_PICO_SYNC_INTEROP 1
 #define configSUPPORT_PICO_TIME_INTEROP 1
+
+#if PICO_RP2350
+// Same as pico-examples: secure-only, no MPU/TrustZone, FPU on.
+#define configENABLE_MPU 0
+#define configENABLE_TRUSTZONE 0
+#define configRUN_FREERTOS_SECURE_ONLY 1
+#define configENABLE_FPU 1
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY 16
+#endif
 
 #include <assert.h>
 /* Define to trap errors during development. */

@@ -10,6 +10,7 @@
 #include "pio_i2c.h"
 #include "pico/error.h"
 #include "pico/timeout_helper.h"
+#include "pico/version.h"
 #include <climits>
 #include <cstdio>
 
@@ -179,7 +180,11 @@ struct Context {
             // printf("interrupt\n");
             return PICO_ERROR_GENERIC;
         }
+#if PICO_SDK_VERSION_MAJOR >= 2
+        if (timeout_check && timeout_check(ts, false)) {  // SDK 2.x added a `reset` param
+#else
         if (timeout_check && timeout_check(ts)) {
+#endif
             // printf("timeout\n");
             return PICO_ERROR_TIMEOUT;
         }

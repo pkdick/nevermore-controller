@@ -34,6 +34,14 @@ board:
         PICO_BOARD: pico_w
         NEVERMORE_BOARD: pico_w
         NEVERMORE_PICO_W_BT: "true"
+    pico2_w:
+      short: Pico 2 W
+      long: Pico 2 W (RP2350, no OTA bootloader)
+      settings:
+        PICO_BOARD: pico2_w
+        PICO_PLATFORM: rp2350-arm-s
+        NEVERMORE_BOARD: pico2_w
+        NEVERMORE_PICO_W_BT: "true"
     pico_w_no_bt:
       short: Pico W w/o BT
       long: Pico W with BT Disabled

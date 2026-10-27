@@ -453,7 +453,7 @@ For now you can:
 * CMake 3.20+
 * C++23 compiler, e.g. GCC 12+ (tested w/ 12.2.1)
 
-NOTE: Pico 2 W (RP2350) builds (`-DPICO_BOARD=pico2_w -DPICO_PLATFORM=rp2350-arm-s`) have no PicoWOTA bootloader, so OTA updates are unavailable; flash `nevermore-controller_pico2_w.uf2` over USB (BOOTSEL) instead.
+NOTE: Pico 2 W (RP2350, Arm cores only) builds use `-DPICO_BOARD=pico2_w -DPICO_PLATFORM=rp2350-arm-s`. They produce the same UF2 set as the Pico W, including the PicoWOTA bootloader for OTA updates (`picowota_ota-nevermore-controller_pico2_w.uf2`).
 
 == Controller Customisation
 

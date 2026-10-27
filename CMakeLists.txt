@@ -77,28 +77,6 @@ set_property(TARGET picowota PROPERTY PICOWOTA_USB_CDC true)
 # each slot is 4 KiB (== erase sector size), want 4 slots to cycle
 set_property(TARGET picowota PROPERTY PICOWOTA_APP_STORE_SIZE 16)
 
-# picowota's bootloader is RP2040 only (boot2, RP2040 linker scripts, VTOR jump).
-# RP2350 builds have no OTA, but keep the same app store (settings) & btstack store.
-if(PICO_PLATFORM MATCHES "^rp2350")
-  set(NEVERMORE_OTA FALSE)
-  set_target_properties(picowota PROPERTIES EXCLUDE_FROM_ALL TRUE)
-else()
-  set(NEVERMORE_OTA TRUE)
-endif()
-
-function(nevermore_build_no_bootloader target)
-  if(NEVERMORE_OTA)
-    picowota_build_no_bootloader_with_app_store("${target}" picowota)
-  else()
-    pico_set_linker_script("${target}" "${CMAKE_SOURCE_DIR}/cmake/memmap_rp2350_with_app_store.ld")
-    target_link_options("${target}" PUBLIC
-      "LINKER:--defsym=app_store_len=$<TARGET_PROPERTY:picowota,PICOWOTA_APP_STORE_SIZE>k"
-      "LINKER:--defsym=bt_store_len=$<TARGET_PROPERTY:picowota,PICOWOTA_BT_STORE_SIZE>k"
-    )
-    picowota_app_store_declare("${target}" picowota)
-  endif()
-endfunction()
-
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
 # HACK: libs often include a config header (e.g. lvgl, btstack, etc)
 set(SRC_CONFIG_DIR ${SRC_DIR}/config/lib)
@@ -249,15 +227,13 @@ add_executable(nevermore-controller-no-bootloader)
 set_target_properties(nevermore-controller-no-bootloader PROPERTIES OUTPUT_NAME "nevermore-controller_${NEVERMORE_BOARD}")
 target_link_libraries(nevermore-controller-no-bootloader PRIVATE nevermore-controller)
 pico_add_extra_outputs(nevermore-controller-no-bootloader)
-nevermore_build_no_bootloader(nevermore-controller-no-bootloader)
+picowota_build_no_bootloader_with_app_store(nevermore-controller-no-bootloader picowota)
 
-if(NEVERMORE_OTA)
-  add_executable(nevermore-controller-ota)
-  set_target_properties(nevermore-controller-ota PROPERTIES OUTPUT_NAME "ota-nevermore-controller_${NEVERMORE_BOARD}")
-  target_link_libraries(nevermore-controller-ota PRIVATE nevermore-controller)
-  pico_add_extra_outputs(nevermore-controller-ota)
-  picowota_build_combined(nevermore-controller-ota picowota)
-endif()
+add_executable(nevermore-controller-ota)
+set_target_properties(nevermore-controller-ota PROPERTIES OUTPUT_NAME "ota-nevermore-controller_${NEVERMORE_BOARD}")
+target_link_libraries(nevermore-controller-ota PRIVATE nevermore-controller)
+pico_add_extra_outputs(nevermore-controller-ota)
+picowota_build_combined(nevermore-controller-ota picowota)
 
 # Extra tools/projects
 add_subdirectory(tools/sensorium)

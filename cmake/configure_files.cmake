@@ -19,7 +19,12 @@ list(REMOVE_DUPLICATES TARGETS)
 # bind info to vars
 include(${EXTRA_MODULES_DIR}/GetGitRevisionDescription.cmake)
 string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S UTC" UTC)
-git_describe_working_tree(GIT_DESCRIPTION --always)
+# Builds from a copy of the sources (no `.git`) can supply it, e.g. `git describe --always --dirty`.
+if(DEFINED ENV{NEVERMORE_GIT_DESCRIPTION})
+  set(GIT_DESCRIPTION "$ENV{NEVERMORE_GIT_DESCRIPTION}")
+else()
+  git_describe_working_tree(GIT_DESCRIPTION --always)
+endif()
 
 foreach(TARGET ${TARGETS})
   cmake_path(REMOVE_EXTENSION TARGET LAST_ONLY OUTPUT_VARIABLE DEST)

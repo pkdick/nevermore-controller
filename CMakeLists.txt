@@ -90,6 +90,17 @@ set_property(TARGET picowota PROPERTY PICOWOTA_USB_CDC true)
 set_property(TARGET picowota PROPERTY PICOWOTA_APP_STORE_SIZE 16)
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
+if(NEVERMORE_WIFI)
+  # OTA updates over Wi-Fi: the bootloader joins the networks saved in the app's settings.
+  set_property(TARGET picowota PROPERTY PICOWOTA_TCP true)
+  target_sources(picowota PRIVATE ${SRC_DIR}/bootloader/wifi_networks.c)
+  target_include_directories(picowota PRIVATE ${SRC_DIR}/bootloader)
+  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # Its logging is compiled out (`NDEBUG`): drop printf & stdio so Wi-Fi fits in its 120 KiB.
+    pico_set_printf_implementation(picowota none)
+    pico_enable_stdio_uart(picowota 0)
+  endif()
+endif()
 # HACK: libs often include a config header (e.g. lvgl, btstack, etc)
 set(SRC_CONFIG_DIR ${SRC_DIR}/config/lib)
 
@@ -118,6 +129,7 @@ file(GLOB_RECURSE SRC_C   CONFIGURE_DEPENDS "${SRC_DIR}/*.c")
 file(GLOB_RECURSE SRC_HPP CONFIGURE_DEPENDS "${SRC_DIR}/*.hpp")
 file(GLOB_RECURSE SRC_CPP CONFIGURE_DEPENDS "${SRC_DIR}/*.cpp")
 set(SRC_FILES ${SRC_H} ${SRC_C} ${SRC_HPP} ${SRC_CPP})
+list(FILTER SRC_FILES EXCLUDE REGEX "/src/bootloader/")  # linked into picowota, see below
 if(NEVERMORE_WIFI)
   # Captive portal web UI, built from `portal/` (`npm run build`) & committed in `portal/dist`.
   include(cmake/embed_files.cmake)

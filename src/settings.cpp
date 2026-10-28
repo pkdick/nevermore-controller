@@ -1,5 +1,6 @@
 #include "settings.hpp"
 #include "FreeRTOS.h"  // IWYU pragma: keep
+#include "bootloader/settings_layout.h"
 #include "config.hpp"
 #include "hardware/flash.h"  // SDK 2.x's `pico/flash.h` no longer pulls this in
 #include "led_status.hpp"
@@ -12,6 +13,7 @@
 #include "utility/timer.hpp"
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -41,6 +43,22 @@ static_assert(PICOWOTA_APP_STORE_SIZE % SLOT_SIZE == 0,
 
 constexpr size_t NUM_SLOTS = PICOWOTA_APP_STORE_SIZE / SLOT_SIZE;
 static_assert(2 <= NUM_SLOTS, "at least two slots required for save cycling");
+
+// The bootloader reads the saved Wi-Fi networks (`bootloader/wifi_networks.c`).
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winvalid-offsetof"
+static_assert(SLOT_SIZE == NEVERMORE_SETTINGS_SLOT_SIZE && MAX_SIZE <= NEVERMORE_SETTINGS_SLOT_SIZE);
+static_assert(sizeof(Header) == NEVERMORE_SETTINGS_HEADER_SIZE && offsetof(Header, crc) == 0 &&
+              offsetof(Header, version) == 4 && offsetof(Header, size) == 8);
+static_assert(std::to_underlying(Header::Version::v0) == NEVERMORE_SETTINGS_VERSION_V0);
+static_assert(offsetof(SettingsV0, save_counter) == NEVERMORE_SETTINGS_OFFSET_SAVE_COUNTER);
+static_assert(offsetof(SettingsV0, wifi) == NEVERMORE_SETTINGS_OFFSET_WIFI);
+static_assert(WifiSettings::NETWORKS_MAX == NEVERMORE_SETTINGS_WIFI_NETWORKS_MAX);
+static_assert(offsetof(WifiSettings, networks) == 0);
+static_assert(offsetof(WifiNetwork, ssid) == 0 && sizeof(WifiNetwork::ssid) == NEVERMORE_SETTINGS_WIFI_SSID_SIZE);
+static_assert(offsetof(WifiNetwork, password) == NEVERMORE_SETTINGS_WIFI_SSID_SIZE &&
+              sizeof(WifiNetwork::password) == NEVERMORE_SETTINGS_WIFI_PASSWORD_SIZE);
+#pragma GCC diagnostic pop
 
 #if DBG_RAM_PROXY
 uint8_t g_flash_proxy[PICOWOTA_APP_STORE_SIZE];

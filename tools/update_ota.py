@@ -76,7 +76,9 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import subprocess
+import time
 import typing
 from abc import abstractmethod
 from dataclasses import dataclass
@@ -90,6 +92,7 @@ from aiohttp import ClientSession
 from bleak import BleakClient
 from nevermore_tool_utilities import NevermoreToolCmdLnArgs
 from nevermore_utilities import *
+from serial_flash.transport import SocketTransport, TransportArgs
 from serial_flash.transport.bluetooth.spp import SppArgs
 from serial_flash.transport.serial import SerialArgs
 from typing_extensions import override
@@ -102,6 +105,11 @@ else:
 __all__ = ['CmdLnArgs', 'main']
 
 REBOOT_DELAY = 3  # seconds
+
+# Wi-Fi builds: the bootloader joins the Wi-Fi networks saved by the app & listens here.
+BOOTLOADER_TCP_PORT = 4242
+# It goes back to the app after 60 s w/o a client (if the app is intact).
+BOOTLOADER_NETWORK_TIMEOUT = 60  # seconds
 
 URL_RELEASES_FETCH_LATEST = (
     "https://api.github.com/repos/sanaahamel/nevermore-controller/releases?per_page=1"
@@ -339,6 +347,51 @@ async def _update_via_serial(args: CmdLnArgs):
     )
 
 
+class _BootloaderNetworkArgs(TransportArgs):
+    """picowota over TCP: waits for the bootloader to join the Wi-Fi, & raises if the link drops."""
+
+    host: str = tap.arg()
+
+    @override
+    def transport(self):
+        deadline = time.monotonic() + BOOTLOADER_NETWORK_TIMEOUT
+        while True:
+            try:
+                sk = socket.create_connection((self.host, BOOTLOADER_TCP_PORT), timeout=3)
+                break
+            except OSError:
+                if deadline < time.monotonic():
+                    raise
+                time.sleep(1)
+
+        sk.settimeout(30)  # a lost link raises instead of hanging
+        return SocketTransport(sk)
+
+
+def _network_host_resolve(address: str) -> str:
+    # Resolved while the app runs: the bootloader doesn't answer mDNS (`nevermore.local`).
+    host = network_address_to_url(address).removeprefix("socket://").rpartition(":")[0]
+    return socket.gethostbyname(host)
+
+
+async def _update_via_network(args: CmdLnArgs, host: str):
+    assert args.file is not None
+
+    attempts = 3
+    for attempt in range(attempts):
+        try:
+            serial_flash.run(
+                _BootloaderNetworkArgs(filename=str(args.file.absolute()), host=host)
+            )
+            return
+        except (OSError, RuntimeError) as e:
+            if attempt + 1 == attempts:
+                raise
+
+            # An incomplete image keeps the bootloader up (and on the network), so retrying is safe.
+            logging.warning(f"network error, retrying...", exc_info=e)
+
+
 async def _update_via_bt_spp(args: CmdLnArgs):
     assert args.file is not None
     assert args.bt_address is not None
@@ -362,7 +415,7 @@ async def _update_via_bt_spp(args: CmdLnArgs):
 async def _post_update_actions_interactive(
     args: CmdLnArgs, prev_version: str, prev_pin_state: PinState
 ):
-    if args.bt_address is None and args.serial is None:
+    if args.bt_address is None and args.serial is None and args.network is None:
         return
 
     print(f"connecting to controller for post-upgrade actions...")
@@ -473,7 +526,7 @@ def address_2_board_cache_add(device_key: str, board: str):
 
 
 def guess_board(args: CmdLnArgs) -> Optional[str]:
-    device_key = args.bt_address or args.serial
+    device_key = args.bt_address or args.serial or args.network
     if device_key is not None:
         board = address_2_board_cache_load().get(device_key.lower())
         if board is not None:
@@ -516,6 +569,14 @@ async def main(args: CmdLnArgs) -> int:
     prev_version = "<unknown>"
     prev_pin_state = PinState.UNKNOWN
 
+    bootloader_host: Optional[str] = None
+    if args.network is not None:
+        try:
+            bootloader_host = _network_host_resolve(args.network)
+        except OSError as e:
+            logging.error(f"unable to resolve `{args.network}`: {e} (try its IP address)")
+            return 1
+
     if (transport := await args.connect()) is not None:
         async with transport:
             prev_pin_state = await pin_config(transport)
@@ -534,7 +595,7 @@ async def main(args: CmdLnArgs) -> int:
                 ):
                     return 1
 
-            device_key = args.bt_address or args.serial
+            device_key = args.bt_address or args.serial or args.network
             assert device_key is not None
             address_2_board_cache_add(device_key, args.board)
 
@@ -560,6 +621,8 @@ async def main(args: CmdLnArgs) -> int:
 
     if args.serial is not None:
         await _update_via_serial(args)
+    elif bootloader_host is not None:
+        await _update_via_network(args, bootloader_host)
     else:
         await _update_via_bt_spp(args)
 

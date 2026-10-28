@@ -11,6 +11,8 @@ from bleak.backends.device import BLEDevice
 from nevermore_utilities import (
     bt_address_validate,
     device_is_likely_a_nevermore,
+    network_address_to_url,
+    serial_open,
     discover_bluetooth_devices,
     Transport,
     TransportBLE,
@@ -28,6 +30,9 @@ __all__ = [
 class NevermoreToolCmdLnArgs(tap.TypedArgs):
     bt_address: Optional[str] = tap.arg(help="device's BT address")
     serial: Optional[str] = tap.arg(help="device's serial port")
+    network: Optional[str] = tap.arg(
+        help="device's network address (`host[:port]`, Wi-Fi builds only)"
+    )
     baud_rate: int = tap.arg(help="baud rate (if applicable)", default=115200)
 
     def validate(self):
@@ -37,9 +42,16 @@ class NevermoreToolCmdLnArgs(tap.TypedArgs):
             logging.error("invalid address for `--bt-address`")
             ok = False
 
-        if self.bt_address is not None and self.serial is not None:
-            logging.error("`--bt-address` and `--serial` are mutually exclusive")
+        if 1 < sum(x is not None for x in [self.bt_address, self.serial, self.network]):
+            logging.error("`--bt-address`, `--serial`, and `--network` are mutually exclusive")
             ok = False
+
+        if self.network is not None:
+            try:
+                network_address_to_url(self.network)
+            except ValueError as e:
+                logging.error(e)
+                ok = False
 
         if self.serial is not None and self.serial.endswith("-if00"):
             logging.warning(
@@ -50,20 +62,18 @@ class NevermoreToolCmdLnArgs(tap.TypedArgs):
         return ok
 
     async def connect(self, timeout: Optional[float] = 10) -> Optional[Transport]:
-        if self.serial:
-            print(f"connecting to `{self.serial}`")
+        path = self.serial
+        if self.network is not None:
+            path = network_address_to_url(self.network)
+
+        if path:
+            print(f"connecting to `{path}`")
             try:
-                if timeout is not None:
+                if timeout is not None and self.network is None:
                     timeout /= 5  # serial connections don't need as long
 
                 return TransportSerial(
-                    serial.Serial(
-                        self.serial,
-                        self.baud_rate,
-                        timeout=timeout,
-                        write_timeout=timeout,
-                        exclusive=True,
-                    )
+                    serial_open(path, self.baud_rate, timeout, exclusive=True)
                 )
             except TransportSerial.TimeoutException as e:
                 # if read failed it might be in bootloader mode, just return `None`

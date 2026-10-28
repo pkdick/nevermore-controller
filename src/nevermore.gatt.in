@@ -26,6 +26,8 @@
 // 2e9410cb-30fd-4b2c-8c95-934226a9ba29 Config - Pin Assignments
 // 5b1dc210-6a51-4cf9-bda7-085604199856 Config - Pin Assignments Default
 // 0f6d7c4b-c30c-45b2-b32a-0e5b130429f0 Config - Pin Assignments Validation Message
+// d87c3ba8-faa1-444e-8279-b44caaa5a2a4 Config - Wi-Fi Credentials
+// e4c096c9-f7d8-440c-97fa-c98b227e3cde Config - Wi-Fi Status
 
 // #define ORG_BLUETOOTH_CHARACTERISTIC_NON_METHANE_VOLATILE_ORGANIC_COMPOUNDS_CONCENTRATION 0x2BD3
 // uint16, PPB w/ resolution of 1, sadly we can't really use it since SGP40 gives us an arbitrary index in 0 to 500
@@ -276,4 +278,10 @@ CHARACTERISTIC_USER_DESCRIPTION, READ | DYNAMIC
 CHARACTERISTIC, 2e9410cb-30fd-4b2c-8c95-934226a9ba29, READ | WRITE | DYNAMIC
 CHARACTERISTIC_USER_DESCRIPTION, READ | DYNAMIC
 CHARACTERISTIC, 0f6d7c4b-c30c-45b2-b32a-0e5b130429f0, READ | DYNAMIC
+CHARACTERISTIC_USER_DESCRIPTION, READ | DYNAMIC
+// Wi-Fi credentials, write only: u8 SSID length, SSID, u8 password length, password
+CHARACTERISTIC, d87c3ba8-faa1-444e-8279-b44caaa5a2a4, WRITE | DYNAMIC
+CHARACTERISTIC_USER_DESCRIPTION, READ | DYNAMIC
+// Wi-Fi status: u8 state, IPv4 (4 octets), u16 GATT TCP port
+CHARACTERISTIC, e4c096c9-f7d8-440c-97fa-c98b227e3cde, READ | DYNAMIC
 CHARACTERISTIC_USER_DESCRIPTION, READ | DYNAMIC

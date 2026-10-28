@@ -68,6 +68,7 @@ VOC_GATING_THRESHOLD_MIN = 175
 CONTROLLER_ADVERTISEMENT_PERIOD = 0.5  # seconds, upper bound on adverts
 CONTROLLER_CONNECTION_DELAY = 5  # seconds, expected upper bound based on tests
 NEVERMORE_SERIAL_BAUDRATE_DEFAULT = 115200
+NEVERMORE_NETWORK_PORT_DEFAULT = 7700  # GATT over TCP, see `src/wifi.hpp`
 
 NEVERMORE_SERVO_PERIOD = 1 / 50
 
@@ -147,6 +148,8 @@ UUID_CHAR_DISPLAY_UI = UUID("86a25d55-1893-4d01-8ea8-8970f622c243")
 UUID_CHAR_CONFIG_PINS = UUID("2e9410cb-30fd-4b2c-8c95-934226a9ba29")
 UUID_CHAR_CONFIG_PINS_ERROR = UUID("0f6d7c4b-c30c-45b2-b32a-0e5b130429f0")
 UUID_CHAR_CONFIG_PINS_DEFAULT = UUID("5b1dc210-6a51-4cf9-bda7-085604199856")
+UUID_CHAR_CONFIG_WIFI_CREDENTIALS = UUID("d87c3ba8-faa1-444e-8279-b44caaa5a2a4")
+UUID_CHAR_CONFIG_WIFI_STATUS = UUID("e4c096c9-f7d8-440c-97fa-c98b227e3cde")
 
 
 class DisplayUI(enum.Enum):
@@ -866,6 +869,26 @@ class CmdDisplayUI(CommandSimple):
 
 # must be of the form `xx:xx:xx:xx:xx:xx`, where `x` is a hex digit (uppercase)
 # FUTURE WORK: Won't work on MacOS. It uses UUIDs to abstract/hide the BT address.
+def network_address_to_url(address: str) -> str:
+    """`host[:port]` -> pyserial URL for a GATT-over-TCP (Wi-Fi) connection."""
+    host, sep, port = address.strip().rpartition(":")
+    if not sep:
+        host, port = port, str(NEVERMORE_NETWORK_PORT_DEFAULT)
+    if not host or not port.isdigit() or not (0 < int(port) < 2**16):
+        raise ValueError(f"invalid network address `{address}`, expected `host[:port]`")
+
+    return f"socket://{host}:{port}"
+
+
+def serial_open(path: str, baudrate: int, timeout: Optional[float], **kwargs):
+    """`serial.Serial` that also accepts pyserial URLs (e.g. `socket://host:port`)."""
+    if "://" in path:
+        kwargs.pop("exclusive", None)  # meaningless for URL handlers
+    return serial.serial_for_url(
+        path, baudrate, timeout=timeout, write_timeout=timeout, **kwargs
+    )
+
+
 def bt_address_validate(addr: str):
     octets = addr.split(":")
     if len(octets) != 6:

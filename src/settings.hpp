@@ -93,6 +93,24 @@ struct [[gnu::packed]] FlagBitSet {
 };
 static_assert(sizeof(FlagBitSet) == 8);
 
+// Wi-Fi station credentials. An empty SSID disables Wi-Fi.
+// Zero-initialised by default (i.e. disabled).
+struct [[gnu::packed]] WifiCredentials {
+    static constexpr size_t SSID_MAX = 32;        // 802.11 limit
+    static constexpr size_t PASSWORD_MIN = 8;     // WPA passphrase limits
+    static constexpr size_t PASSWORD_MAX = 63;
+
+    std::array<char, SSID_MAX + 1> ssid{};          // NUL terminated
+    std::array<char, PASSWORD_MAX + 1> password{};  // NUL terminated; empty -> open network
+
+    [[nodiscard]] bool enabled() const {
+        return ssid[0] != '\0';
+    }
+    [[nodiscard]] bool validate() const;
+
+    bool operator==(WifiCredentials const&) const = default;
+};
+
 template <std::unsigned_integral Store, float Lo, float Hi>
 struct [[gnu::packed]] PeriodSecInverse {
     static_assert(Lo < Hi);
@@ -142,6 +160,7 @@ struct [[gnu::packed]] SettingsV0 {
     BLE::Percentage8 fan_power_min = 17.5;           // Delta BFB0712HF
     BLE::Percentage8 fan_power_kick_start_min = 18;  // Delta BFB0712HF
     BLE::Count16 fan_pwm_frequency_hz = 25'000;
+    WifiCredentials wifi;
 
     // replaces valid fields from RHS into self
     void merge_valid_fields(SettingsV0 const&);

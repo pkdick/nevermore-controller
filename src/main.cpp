@@ -3,6 +3,7 @@
 #include "config.hpp"
 #include "display.hpp"
 #include "gatt.hpp"
+#include "gatt_stream.hpp"
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/watchdog.h"
@@ -21,11 +22,12 @@
 #include "usb_cdc_gatt.hpp"
 #include "utility/cyw43_timer.hpp"
 #include "utility/task.hpp"
+#include "wifi.hpp"
 #include "ws2812.hpp"
 #include <cassert>
 #include <cstdio>
 
-#if NEVERMORE_PICO_W_BT || defined(CYW43_WL_GPIO_LED_PIN) || CYW43_USES_VSYS_PIN
+#if NEVERMORE_PICO_W_BT || NEVERMORE_WIFI || defined(CYW43_WL_GPIO_LED_PIN) || CYW43_USES_VSYS_PIN
 #define CYW43_IN_USE 1
 #else
 #define CYW43_IN_USE 0
@@ -157,6 +159,8 @@ void startup(WatchdogSetupInfo const watchdog_setup_info) {
     if (!display::init_with_ui()) return;
     if (!sensors::init()) return;
     if (!gatt::init()) return;
+    gatt_stream::init();  // before any stream transport (USB CDC, TCP) is launched
+    if (!wifi::init()) return;
 
     // HACK: Why the hell is this a BT timer instead of a FreeRTOS timer?
     // Because apparently you can't safely call `cyw43_arch_gpio_put` from a

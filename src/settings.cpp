@@ -323,6 +323,7 @@ void Settings::reset(ResetFlags flags) {
         auto save_counter_ = save_counter;
         auto pins_ = pins;
         auto servo_ = servo_vent;
+        auto wifi_ = wifi;
         *this = {};
         header = header_;
         voc_calibration = voc_calibration_;
@@ -330,6 +331,7 @@ void Settings::reset(ResetFlags flags) {
         save_counter = save_counter_;
         pins = pins_;
         servo_vent = servo_;
+        wifi = wifi_;
     }
 
     if (flags & hardware) {
@@ -401,6 +403,7 @@ void save(SettingsPersisted& settings) {
     SETTINGS_FIELD_CHECK(servo_vent);
     SETTINGS_FIELD_CHECK(_1);
     SETTINGS_FIELD_CHECK(fan_pwm_frequency_hz);
+    SETTINGS_FIELD_CHECK(wifi);
 #undef SETTINGS_FIELD_CHECK
 
     if (reinterpret_cast<SettingsPersisted const*>(g_active_slot.load())->voc_calibration !=
@@ -456,6 +459,17 @@ void SettingsV0::merge_valid_fields(SettingsV0 const& x) {
     if (x.servo_vent.validate()) servo_vent = x.servo_vent;
     flags = x.flags;
     if (x.fan_pwm_frequency_hz != BLE::NOT_KNOWN) fan_pwm_frequency_hz = x.fan_pwm_frequency_hz;
+    if (x.wifi.validate()) wifi = x.wifi;
+}
+
+bool WifiCredentials::validate() const {
+    // `strnlen` isn't available in strict C++ mode
+    auto const length = [](auto const& xs) { return size_t(find(xs.begin(), xs.end(), 0) - xs.begin()); };
+    auto const ssid_len = length(ssid);
+    auto const password_len = length(password);
+    if (ssid_len == ssid.size() || password_len == password.size()) return false;  // not terminated
+    if (ssid_len == 0) return password_len == 0;  // disabled -> no stray password
+    return password_len == 0 || PASSWORD_MIN <= password_len;
 }
 
 }  // namespace nevermore::settings

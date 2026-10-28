@@ -455,6 +455,25 @@ For now you can:
 
 NOTE: Pico 2 W (RP2350, Arm cores only) builds use `-DPICO_BOARD=pico2_w -DPICO_PLATFORM=rp2350-arm-s`. They produce the same UF2 set as the Pico W, including the PicoWOTA bootloader for OTA updates (`picowota_ota-nevermore-controller_pico2_w.uf2`).
 
+== Wi-Fi (Pico 2 W)
+
+Pico 2 W builds can also talk to Klipper over Wi-Fi, using the same protocol as the USB `-if02` interface carried over TCP (port 7700). The Pico W lacks the RAM for this alongside everything else, so its builds don't include it (`-DNEVERMORE_WIFI=ON` forces it).
+
+Credentials are stored in the controller's settings (flash), not in the firmware image. Set them once over USB:
+
+```bash
+./tools/wifi-config.py --serial /dev/serial/by-id/usb-Nevermore_Filter_pico2_w_<device-id>-if02 --ssid <network name>
+```
+
+The password is prompted for. The tool waits for the connection and prints the controller's address. Other commands:
+
+* `--status`: show the Wi-Fi status (also works with `--network <address>`).
+* `--forget`: forget the credentials and turn Wi-Fi off.
+
+Then use `network_address` instead of `serial` / `bt_address` in Klipper's `[nevermore]` section. The controller also announces itself via mDNS as `nevermore.local`. A DHCP reservation on the router (fixed IP) is the most robust choice.
+
+NOTE: Anyone on the local network can control the filter through this port; there is no authentication. Keep it on a trusted network. OTA updates (`update_ota.py`) still need USB or BT, since the bootloader has no Wi-Fi.
+
 == Controller Customisation
 
 `src/config.hpp` contains all user-customisable options.
@@ -675,10 +694,18 @@ bt_address: <optional, recommended, omitted by default>
 #           *not* one which ends w/ `-if00`.
 serial: <device path>
 
+# Use a Wi-Fi (TCP) connection instead of BLE/USB. Pico 2 W builds only.
+# Mutually exclusive w/ `bt_address` and `serial`.
+# Format: `host[:port]`, port defaults to 7700.
+# See <<Wi-Fi (Pico 2 W)>> for setting up the controller's Wi-Fi.
+# example - `network_address: 192.168.1.50` or `network_address: nevermore.local`
+network_address: <host>
+
 # seconds, 0 to disable, how long to wait at startup before failing if Klipper can't connect
 # If disabled (set to 0) the module will not error on startup if it cannot connect.
-# Disabling this requires that `bt_address` is set.
+# Disabling this requires that `bt_address` or `network_address` is set.
 # Cannot be used w/ `serial`.
+# Default w/ `network_address` is 30 seconds.
 #
 # WARNING:  **Do not disable unless you've fully tested everything in the filter.**
 #           i.e. it should be ready for a serial # request on the Discord.

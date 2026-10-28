@@ -7,7 +7,9 @@
 #include "sensors.hpp"
 #include "settings.hpp"
 #include "utility/task.hpp"
+#include "wifi.hpp"
 #include <cstdio>
+#include <cstring>
 
 using namespace std;
 
@@ -67,6 +69,8 @@ optional<uint16_t> attr_read(
         USER_DESCRIBE(CONFIG_PINS, "Pin Assignments")
         USER_DESCRIBE(CONFIG_PINS_DEFAULT, "Pin Assignment Defaults")
         USER_DESCRIBE(CONFIG_PINS_ERROR, "Pin Assignments Validation Message")
+        USER_DESCRIBE(CONFIG_WIFI_CREDENTIALS, "Wi-Fi Credentials")
+        USER_DESCRIBE(CONFIG_WIFI_STATUS, "Wi-Fi Status")
 
         // NOLINTNEXTLINE(bugprone-branch-clone)
         HANDLE_READ_BLOB(CONFIG_VOC_GATING_THRESHOLD, VALID_RANGE, VOC_GATING_THRESHOLD_RANGE)
@@ -79,6 +83,7 @@ optional<uint16_t> attr_read(
         READ_VALUE(CONFIG_VOC_CALIBRATE_ENABLED, settings::g_active.voc_calibration_enabled)
         READ_VALUE(CONFIG_PINS, settings::g_active.pins)
         READ_VALUE(CONFIG_PINS_DEFAULT, PINS_DEFAULT)
+        READ_VALUE(CONFIG_WIFI_STATUS, wifi::status())
 
     case HANDLE_ATTR(CONFIG_PINS_ERROR, VALUE):
         return att_read_callback_handle_blob(reinterpret_cast<uint8_t const*>(g_pins_config_error),
@@ -163,6 +168,29 @@ optional<int> attr_write(hci_con_handle_t conn, uint16_t attr, span<uint8_t cons
 
         g_pins_config_error = "";
         settings::g_active.pins = value;
+        return 0;
+    }
+
+    case HANDLE_ATTR(CONFIG_WIFI_CREDENTIALS, VALUE): {
+        if constexpr (!NEVERMORE_WIFI) return ATT_ERROR_REQUEST_NOT_SUPPORTED;
+
+        // Empty SSID -> forget credentials & disable Wi-Fi.
+        settings::WifiCredentials credentials;
+        auto const field = [&](auto& dst) -> bool {
+            uint8_t const length = consume;
+            if (dst.size() <= length) return false;  // need room for the NUL
+
+            auto const src = consume.span(length);
+            if (memchr(src.data(), '\0', src.size())) return false;
+
+            memcpy(dst.data(), src.data(), src.size());
+            return true;
+        };
+        if (!field(credentials.ssid) || !field(credentials.password)) return ATT_ERROR_VALUE_NOT_ALLOWED;
+        if (consume.remaining()) return ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH;
+        if (!credentials.validate()) return ATT_ERROR_VALUE_NOT_ALLOWED;
+
+        wifi::credentials_set(credentials);
         return 0;
     }
 

@@ -56,6 +56,17 @@ option(NEVERMORE_BLUETOOTH_LOW_LEVEL_DEBUG "bluetooth low level debug logging (v
 option(NEVERMORE_I2C_DEBUG "I2C debug logging" OFF)
 # feature options
 option(NEVERMORE_SETTINGS_PERSISTENCE "settings are saved/restored from flash" ON)
+# Wi-Fi transport (GATT over TCP). The Pico W lacks the RAM for lwIP alongside
+# everything else, so it defaults to ON only for the Pico 2 W.
+if(PICO_BOARD STREQUAL "pico2_w")
+  set(NEVERMORE_WIFI_DEFAULT ON)
+else()
+  set(NEVERMORE_WIFI_DEFAULT OFF)
+endif()
+option(NEVERMORE_WIFI "Wi-Fi transport (GATT over TCP, needs a CYW43 board)" ${NEVERMORE_WIFI_DEFAULT})
+if(NEVERMORE_WIFI AND NOT (PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w"))
+  message(FATAL_ERROR "NEVERMORE_WIFI requires a CYW43 board (pico_w, pico2_w)")
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 23)
@@ -130,13 +141,14 @@ target_compile_definitions(nevermore-controller PUBLIC
   NEVERMORE_I2C_DEBUG=$<BOOL:${NEVERMORE_I2C_DEBUG}>
   # feature options
   NEVERMORE_SETTINGS_PERSISTENCE=$<BOOL:${NEVERMORE_SETTINGS_PERSISTENCE}>
+  NEVERMORE_WIFI=$<BOOL:${NEVERMORE_WIFI}>
 
   # UGLY: Also defines the value of `nevermore::Priority::Communication`.
   # We want a priority above almost anything else.
   # Leaves 3 slots above (Max, USBD, Startup)
   CYW43_TASK_PRIORITY=28
   CYW43_HOST_NAME="Nevermore"
-  CYW43_LWIP=0
+  CYW43_LWIP=$<BOOL:${NEVERMORE_WIFI}>
 
   # default is 4.
   # Current users: tinyusb w/ DCD (1), stdio w/ USB (1), CYW43 driver (1), WS2812 (1), CST816S (1), GC9A01 (1)
@@ -177,7 +189,9 @@ target_link_libraries(
          picowota_client
 )
 
-if(PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
+if(NEVERMORE_WIFI)
+  target_link_libraries(nevermore-controller PUBLIC pico_cyw43_arch_lwip_sys_freertos pico_lwip_mdns)
+elseif(PICO_BOARD STREQUAL "pico_w" OR PICO_BOARD STREQUAL "pico2_w")
   target_link_libraries(nevermore-controller PUBLIC pico_cyw43_arch_sys_freertos)
 endif()
 

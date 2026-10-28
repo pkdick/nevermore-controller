@@ -85,6 +85,12 @@ CONTROLLER_CONNECTION_RETRY_DELAY_POST_CONNECT = 60
 
 # This is executed in a background thread so we can afford some timing slack.
 CONTROLLER_SERIAL_TIMEOUT = 0.5
+# Wi-Fi round trips are slower & jitterier than USB.
+CONTROLLER_NETWORK_TIMEOUT = 3
+# Joining Wi-Fi after power-on takes a few seconds; leave room for a retry.
+CONTROLLER_NETWORK_CONNECTION_INITIAL_TIMEOUT = 30
+# Network drops are usually transient (e.g. AP roaming); recover promptly.
+CONTROLLER_NETWORK_RETRY_DELAY_POST_CONNECT = 5
 
 _A = TypeVar("_A")
 _B = TypeVar("_B")
@@ -355,6 +361,9 @@ class NevermoreBackground(NevermoreInterface):
         self._led_dirty: UNSAFE_LazyAsyncioEvent = None
         self._thread = Thread(target=self._worker)
         self._thread.name = self.name
+        self._retry_delay_post_connect: float = (
+            CONTROLLER_CONNECTION_RETRY_DELAY_POST_CONNECT
+        )
 
     @property
     @override
@@ -492,7 +501,7 @@ class NevermoreBackground(NevermoreInterface):
         await asyncio.sleep(
             CONTROLLER_CONNECTION_RETRY_DELAY_INITIAL
             if delta <= self.connection_initial_timeout
-            else CONTROLLER_CONNECTION_RETRY_DELAY_POST_CONNECT
+            else self._retry_delay_post_connect
         )
 
         return True
@@ -627,15 +636,26 @@ class NevermoreBLE(NevermoreBackground):
 class NevermoreSerial(NevermoreBackground):
     _ERRNO_IO_ERROR = 5
 
+    # `network`:    The stream is GATT over TCP (Wi-Fi). Connection failures
+    #               & timeouts are expected/transient; reconnect instead of dying.
     def __init__(
-        self, nevermore: "Nevermore", mk_serial: Callable[[], serial.Serial]
+        self,
+        nevermore: "Nevermore",
+        mk_serial: Callable[[], serial.Serial],
+        *,
+        network: bool = False,
+        connection_initial_timeout: float = CONTROLLER_CONNECTION_RETRY_DELAY_INITIAL
+        * 2,
     ) -> None:
         super().__init__(
-            f"nevermore-serial {nevermore.name}",
+            f"nevermore-{'network' if network else 'serial'} {nevermore.name}",
             nevermore,
-            CONTROLLER_CONNECTION_RETRY_DELAY_INITIAL * 2,
+            connection_initial_timeout,
         )
         self._mk_serial = mk_serial
+        self._network = network
+        if network:
+            self._retry_delay_post_connect = CONTROLLER_NETWORK_RETRY_DELAY_POST_CONNECT
 
     @override
     async def _worker_setup(self) -> None:
@@ -658,17 +678,31 @@ class NevermoreSerial(NevermoreBackground):
         while True:
             self._connected.clear()
 
+            transport = None
             try:
                 if (transport := mk_transport()) is not None:
                     self.log.info(f"connected to controller")
                     await self._worker_using(transport)
                 elif not await self._reconnect_retry(connection_start):
                     break
-            except OSError as e:
+            except (OSError, TransportSerial.TimeoutException) as e:
+                if self._network:
+                    # includes `serial.SerialException` (subclass of `OSError`)
+                    self.log.warning(f"lost connection to controller: {e}")
+                    if not await self._reconnect_retry(connection_start):
+                        break
+                    continue
+
                 self.log.exception(e)
                 # common IO failure, USB likely got pulled
-                if e.errno != self._ERRNO_IO_ERROR:
+                if not isinstance(e, OSError) or e.errno != self._ERRNO_IO_ERROR:
                     raise e  # not something we're expecting to handle
+            finally:
+                if transport is not None:
+                    try:
+                        await transport.close()
+                    except Exception:
+                        pass  # already broken, nothing more to do
 
 
 @dataclass(frozen=True)
@@ -684,6 +718,32 @@ class NevermoreSerialInfo:
 
         return NevermoreSerialInfo(
             path=path,
+        )
+
+
+@dataclass(frozen=True)
+class NevermoreNetworkInfo:
+    url: str
+    connection_initial_timeout: float
+
+    @staticmethod
+    def mk(config: ConfigWrapper) -> Optional['NevermoreNetworkInfo']:
+        address: Optional[str] = config.get("network_address", None)
+        if address is None:
+            return None
+
+        try:
+            url = network_address_to_url(address)
+        except ValueError as e:
+            raise config.error(str(e))
+
+        return NevermoreNetworkInfo(
+            url=url,
+            connection_initial_timeout=config.getfloat(
+                "connection_initial_timeout",
+                CONTROLLER_NETWORK_CONNECTION_INITIAL_TIMEOUT,
+                minval=0,
+            ),
         )
 
 
@@ -868,7 +928,12 @@ class Nevermore:
             )
 
         self._interface: NevermoreInterface
-        if (cfg_serial := NevermoreSerialInfo.mk(config)) is not None:
+        cfg_serial = NevermoreSerialInfo.mk(config)
+        cfg_network = NevermoreNetworkInfo.mk(config)
+        if cfg_serial is not None and cfg_network is not None:
+            raise config.error("`serial` and `network_address` are mutually exclusive")
+
+        if cfg_serial is not None:
             self._interface = NevermoreSerial(
                 self,
                 lambda: serial.Serial(
@@ -878,6 +943,17 @@ class Nevermore:
                     write_timeout=CONTROLLER_SERIAL_TIMEOUT,
                     exclusive=True,
                 ),
+            )
+        elif cfg_network is not None:
+            self._interface = NevermoreSerial(
+                self,
+                lambda: serial.serial_for_url(
+                    cfg_network.url,
+                    timeout=CONTROLLER_NETWORK_TIMEOUT,
+                    write_timeout=CONTROLLER_NETWORK_TIMEOUT,
+                ),
+                network=True,
+                connection_initial_timeout=cfg_network.connection_initial_timeout,
             )
         elif (cfg_ble := NevermoreBleInfo(config)) is not None:
             self._interface = NevermoreBLE(

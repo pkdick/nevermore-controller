@@ -1,9 +1,9 @@
-import type { WifiStatus, ScanResult, SavedNetwork, APStatus, APConfig, Variable } from '../types';
+import type { WifiStatus, ScanResult, SavedNetwork, APStatus, APConfig, Variable, Sensors } from '../types';
 
 const API_BASE = '/api/wifi';
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+async function request<T>(path: string, options?: RequestInit, base = API_BASE): Promise<T> {
+  const res = await fetch(`${base}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -22,6 +22,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   // Status
   getStatus: () => request<WifiStatus>('/status'),
+
+  // Sensors & fan (also served on the home network)
+  getSensors: () => request<Sensors>('/api/sensors', undefined, ''),
 
   // Scan
   scan: () => request<{ networks: ScanResult[] }>('/scan').then(r => r.networks),

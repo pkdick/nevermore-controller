@@ -34,6 +34,8 @@ bool connect(char const*) {
 
 void ap_password_set(char const*) {}
 
+void ap_result_shown() {}
+
 int scan(std::span<ScanResult>) {
     return -1;
 }
@@ -62,6 +64,7 @@ int scan(std::span<ScanResult>) {
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 #include <span>
 
 extern "C" {
@@ -113,6 +116,7 @@ Status g_status{.state = State::disabled, .port = GATT_TCP_PORT};
 Ssid g_current{};    // network being joined or joined
 Ssid g_requested{};  // `connect` request, consumed by `wifi_task`
 Ssid g_ap_ssid{};
+optional<TickType_t> g_ap_result_shown;  // since joining the current network
 TaskHandle_t g_wifi_task;
 
 [[nodiscard]] auto lock_guard() {
@@ -296,6 +300,10 @@ void connected(settings::WifiNetwork const& network) {
     // keep the hotspot a little while so the portal can show the result
     bool const close_ap = ap_active();
     auto const connected_at = xTaskGetTickCount();
+    {
+        auto _ = lock_guard();
+        g_ap_result_shown.reset();
+    }
 
     for (;;) {
         auto const bits = wait_for_change(ticks(LINK_POLL_PERIOD));
@@ -324,7 +332,17 @@ void connected(settings::WifiNetwork const& network) {
             return;
         }
 
-        if (close_ap && ticks(AP_CLOSE_AFTER_CONNECT) <= xTaskGetTickCount() - connected_at) ap_stop();
+        if (close_ap && ap_active()) {
+            auto const now = xTaskGetTickCount();
+            optional<TickType_t> shown;
+            {
+                auto _ = lock_guard();
+                shown = g_ap_result_shown;
+            }
+            if (ticks(AP_CLOSE_AFTER_CONNECT) <= now - connected_at ||
+                    (shown && ticks(AP_CLOSE_AFTER_RESULT_SHOWN) <= now - *shown))
+                ap_stop();
+        }
 
         // DHCP lease renewals may hand out a new address.
         if (auto curr = *netif_ip4_addr(&netif_sta()); !ip4_addr_eq(&curr, &addr)) {
@@ -533,6 +551,11 @@ bool connect(char const* ssid) {
 void ap_password_set(char const* password) {
     auto _ = lock_guard();
     copy_str(settings::g_active.wifi.ap_password, password);
+}
+
+void ap_result_shown() {
+    auto _ = lock_guard();
+    if (g_status.state == State::connected && !g_ap_result_shown) g_ap_result_shown = xTaskGetTickCount();
 }
 
 int scan(span<ScanResult> results) {

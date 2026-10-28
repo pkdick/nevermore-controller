@@ -1,8 +1,10 @@
 #include "portal.hpp"
 #include "FreeRTOS.h"  // IWYU pragma: keep
+#include "gatt/fan.hpp"
 #include "lwip/sockets.h"
 #include "pico/cyw43_arch.h"
 #include "pico/time.h"
+#include "sensors.hpp"
 #include "task.h"  // IWYU pragma: keep
 #include "utility/task.hpp"
 #include "wifi.hpp"
@@ -40,6 +42,7 @@ constexpr size_t REQUEST_MAX = 2048;  // request line + headers + body
 constexpr size_t BODY_MAX = 512;
 constexpr size_t RESPONSE_MAX = 4096;
 constexpr char const* API = "/api/wifi";
+constexpr char const* API_SENSORS = "/api/sensors";
 constexpr uint32_t PORTAL_STACK_SIZE = 2048;
 
 uint32_t ap_ip() {
@@ -81,6 +84,15 @@ struct Json {
     void ip(uint32_t addr) {  // network order
         auto const* b = reinterpret_cast<uint8_t const*>(&addr);
         raw("\"%u.%u.%u.%u\"", b[0], b[1], b[2], b[3]);
+    }
+
+    // BLE scalar, `null` if not known
+    template <typename T>
+    void num(T const& x, double scale = 1) {
+        if (x == BLE::NOT_KNOWN)
+            raw("null");
+        else
+            raw("%.2f", double(x) * scale);
     }
 };
 
@@ -226,6 +238,10 @@ char const* state_name(State s) {
     switch (s) {
     case State::connected: return "connected";
     case State::connecting: return "connecting";
+    // last attempt failed (`ssid`), the controller retries on its own
+    case State::failed_auth: return "wrong_password";
+    case State::failed_no_network: return "not_found";
+    case State::failed: return "failed";
     default: return "disconnected";
     }
 }
@@ -245,7 +261,7 @@ int rssi_quality(int32_t rssi) {
     return clamp(2 * (int(rssi) + 100), 0, 100);
 }
 
-void api_status(int fd) {
+void api_status(int fd, bool readonly) {
     auto const d = details();
     auto& j = reply();
     j.raw("{");
@@ -262,7 +278,9 @@ void api_status(int fd) {
                           d.mac[4], d.mac[5]);
     j.key("hostname"), j.str(MDNS_HOSTNAME), j.raw(",");
     j.key("uptime_ms"), j.raw("%llu,", (unsigned long long)to_ms_since_boot(get_absolute_time()));
-    j.key("ap_active"), j.raw(d.ap_active ? "true" : "false");
+    j.key("ap_active"), j.raw(d.ap_active ? "true," : "false,");
+    j.key("ap_ssid"), j.str(d.ap_ssid.data()), j.raw(",");
+    j.key("readonly"), j.raw(readonly ? "true" : "false");
     j.raw("}");
     respond_json(fd, j);
 }
@@ -378,17 +396,53 @@ void api_ap_config_put(int fd, string_view body) {
     respond_ok(fd);
 }
 
-void route(int fd, Request const& req) {
+void api_sensors(int fd) {
+    auto const s = [] {
+        auto _ = sensors::sensors_guard();
+        return sensors::g_sensors.with_fallbacks();
+    }();
+
+    auto& j = reply();
+    auto const side = [&](char const* name, BLE::Temperature const& t, BLE::Humidity const& h,
+                              BLE::Pressure const& p, sensors::VOCIndex const& voc) {
+        j.key(name), j.raw("{");
+        j.key("temperature"), j.num(t), j.raw(",");
+        j.key("humidity"), j.num(h), j.raw(",");
+        j.key("pressure"), j.num(p, 0.01), j.raw(",");  // hPa
+        j.key("voc_index"), j.num(voc);
+        j.raw("}");
+    };
+    j.raw("{");
+    side("intake", s.temperature_intake, s.humidity_intake, s.pressure_intake, s.voc_index_intake);
+    j.raw(",");
+    side("exhaust", s.temperature_exhaust, s.humidity_exhaust, s.pressure_exhaust, s.voc_index_exhaust);
+    j.raw(",");
+    j.key("mcu_temperature"), j.num(s.temperature_mcu), j.raw(",");
+    j.key("fan"), j.raw("{");
+    j.key("power"), j.raw("%.1f,", double(gatt::fan::fan_power()));
+    j.key("rpm"), j.raw("%.0f,", double(gatt::fan::fan_rpm()));
+    j.key("override"), j.num(gatt::fan::fan_power_override());
+    j.raw("},");
+    j.key("uptime_s"), j.raw("%llu", (unsigned long long)(to_ms_since_boot(get_absolute_time()) / 1000));
+    j.raw("}");
+    respond_json(fd, j);
+}
+
+// `from_hotspot`: hotspot clients get the full portal. Others (home network) only get a read-only
+// view (status & sensors): the portal can change the network config & has no auth.
+void route(int fd, Request const& req, bool from_hotspot) {
     auto const& m = req.method;
     string_view path = req.path.substr(0, req.path.find('?'));
 
     // Captive portal: anything aimed at another host (OS connectivity checks, any site)
     // is sent to the portal. Makes phones pop it up on their own.
-    array<char, 24> self{};
-    auto const ip = ap_ip();
-    auto const* o = reinterpret_cast<uint8_t const*>(&ip);
-    snprintf(self.data(), self.size(), "%u.%u.%u.%u", o[0], o[1], o[2], o[3]);
-    if (req.host.substr(0, req.host.find(':')) != self.data()) return redirect_to_portal(fd);
+    if (from_hotspot) {
+        array<char, 24> self{};
+        auto const ip = ap_ip();
+        auto const* o = reinterpret_cast<uint8_t const*>(&ip);
+        snprintf(self.data(), self.size(), "%u.%u.%u.%u", o[0], o[1], o[2], o[3]);
+        if (req.host.substr(0, req.host.find(':')) != self.data()) return redirect_to_portal(fd);
+    }
 
     if (m == "GET" && (path == "/" || path == "/index.html"))
         return respond(fd, 200, "OK", "text/html; charset=utf-8", nevermore_portal_index_html,
@@ -401,11 +455,23 @@ void route(int fd, Request const& req) {
         return respond(fd, 200, "OK", "text/css", nevermore_portal_index_css_gz, nevermore_portal_index_css_gz_size,
                 "Content-Encoding: gzip\r\nCache-Control: no-store\r\n");
 
-    if (!path.starts_with(API)) return redirect_to_portal(fd);
+    if (m == "GET" && path == API_SENSORS) return api_sensors(fd);
+
+    if (!path.starts_with(API)) {
+        if (from_hotspot) return redirect_to_portal(fd);
+        return respond_error(fd, 404, "Not Found", "Inconnu");
+    }
     auto const api = path.substr(strlen(API));
     constexpr string_view NETWORKS = "/networks/";
 
-    if (m == "GET" && api == "/status") return api_status(fd);
+    if (m == "GET" && api == "/status") {
+        api_status(fd, !from_hotspot);
+        if (from_hotspot) ap_result_shown();  // no-op unless connected
+        return;
+    }
+    if (!from_hotspot)
+        return respond_error(fd, 403, "Forbidden", "Configuration possible uniquement depuis le hotspot du filtre");
+
     if (m == "GET" && api == "/scan") return api_scan(fd);
     if (m == "GET" && api == "/networks") return api_networks(fd);
     if (m == "POST" && api == "/networks") return api_network_add(fd, req.body);
@@ -504,14 +570,13 @@ void portal_task() {
         lwip_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
         lwip_setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
-        // Hotspot clients only: the portal can change the network config & has no auth.
         sockaddr_in local{};
         socklen_t local_len = sizeof(local);
         bool const from_hotspot = lwip_getsockname(fd, reinterpret_cast<sockaddr*>(&local), &local_len) == 0 &&
                                   local.sin_addr.s_addr == ap_ip();
 
         Request req;
-        if (from_hotspot && read_request(fd, s_request, req)) route(fd, req);
+        if (read_request(fd, s_request, req)) route(fd, req, from_hotspot);
 
         lwip_close(fd);
     }

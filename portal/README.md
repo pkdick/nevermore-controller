@@ -10,6 +10,11 @@ is reimplemented by the firmware. Changes from upstream:
 - Signal bars & quality (%) for every scanned network, strongest first.
 - Errors are shown instead of only logged; "connecting" state shown.
 - Saved networks are listed in the order they're tried, and refreshed after connecting.
+- Connection outcome tracked across the hotspot's channel switch (the phone drops off for a
+  few seconds): "connected" banner kept once seen, wrong password / network not found shown.
+  Scanned networks are tagged "Connecté" / "Mémorisé".
+- Read-only dashboard (`SensorsCard`: fan & sensors from `/api/sensors`) when served on the
+  home network (`readonly` in `/api/wifi/status`).
 - Only pre-compressed assets are emitted (`deleteOriginFile`), the firmware serves them gzipped.
 
 ## Building

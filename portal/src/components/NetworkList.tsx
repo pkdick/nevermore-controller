@@ -2,16 +2,18 @@ import { useState } from 'preact/hooks';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { SignalBars, rssiToQuality } from './ui/SignalBars';
-import type { ScanResult } from '../types';
+import type { ScanResult, WifiStatus } from '../types';
 import { api } from '../api/client';
 import './NetworkList.css';
 
 interface Props {
   onConnect: (ssid: string) => void;
+  status: WifiStatus | null;
 }
 
-export function NetworkList({ onConnect }: Props) {
+export function NetworkList({ onConnect, status }: Props) {
   const [networks, setNetworks] = useState<ScanResult[]>([]);
+  const [saved, setSaved] = useState<Set<string>>(new Set());
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [selectedSsid, setSelectedSsid] = useState<string | null>(null);
@@ -25,6 +27,7 @@ export function NetworkList({ onConnect }: Props) {
     try {
       const results = await api.scan();
       setNetworks([...results].sort((a, b) => b.rssi - a.rssi));
+      await loadSaved();
       setScanned(true);
     } catch (e) {
       setError(`Recherche impossible : ${(e as Error).message}`);
@@ -33,24 +36,42 @@ export function NetworkList({ onConnect }: Props) {
     }
   };
 
+  const loadSaved = async () => {
+    try {
+      setSaved(new Set((await api.getNetworks()).map((n) => n.ssid)));
+    } catch {
+      // only cosmetic
+    }
+  };
+
   const connect = async (ssid: string) => {
     setConnecting(true);
     setError(null);
+    let added = false;
     try {
       // Add network first if password provided
       if (password) {
         await api.addNetwork(ssid, password);
+        added = true;
       }
       await api.connect(ssid);
-      onConnect(ssid);
-      setSelectedSsid(null);
-      setPassword('');
     } catch (e) {
-      setError(`Connexion impossible : ${(e as Error).message}`);
-    } finally {
-      setConnecting(false);
+      // `fetch` itself failing (`TypeError`) after the network was saved: the hotspot is likely
+      // switching channel to join it. The status card will tell the outcome.
+      if (!(added && e instanceof TypeError)) {
+        setError(`Connexion impossible : ${(e as Error).message}`);
+        setConnecting(false);
+        return;
+      }
     }
+    setConnecting(false);
+    onConnect(ssid);
+    setSaved((s) => new Set(s).add(ssid));
+    setSelectedSsid(null);
+    setPassword('');
   };
+
+  const isCurrent = (ssid: string) => status?.state === 'connected' && status.ssid === ssid;
 
   return (
     <Card
@@ -79,6 +100,9 @@ export function NetworkList({ onConnect }: Props) {
                 <div class="network-ssid">
                   {net.auth !== 'OPEN' && <span class="lock">🔒</span>}
                   {net.ssid || '(masqué)'}
+                  {isCurrent(net.ssid)
+                    ? <span class="network-badge network-badge-current">Connecté</span>
+                    : saved.has(net.ssid) && <span class="network-badge">Mémorisé</span>}
                 </div>
                 <div class="network-meta text-sm text-muted" title={`${net.rssi} dBm`}>
                   Signal {rssiToQuality(net.rssi)} % • {net.auth === 'OPEN' ? 'ouvert' : net.auth}

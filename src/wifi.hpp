@@ -22,11 +22,13 @@ constexpr char const* MDNS_HOSTNAME = "nevermore";
 
 // Configuration hotspot: `<AP_SSID_PREFIX><last 2 MAC octets>`, portal at http://192.168.4.1/
 // Opened when no network is saved, or when none could be joined for `AP_AFTER_FAILING_FOR`.
-// Closed `AP_CLOSE_AFTER_CONNECT` after joining a network (so the portal can show the result).
+// Closed once a network is joined: `AP_CLOSE_AFTER_RESULT_SHOWN` after the portal showed the result,
+// at most `AP_CLOSE_AFTER_CONNECT` after joining (the phone may not come back after the channel switch).
 constexpr char const* AP_SSID_PREFIX = "Nevermore-";
 constexpr char const* AP_PASSWORD_DEFAULT = "nevermore";
 constexpr auto AP_AFTER_FAILING_FOR = 2min;
 constexpr auto AP_CLOSE_AFTER_CONNECT = 1min;
+constexpr auto AP_CLOSE_AFTER_RESULT_SHOWN = 5s;
 
 // NB: Values are part of the GATT protocol. Append only.
 enum class State : uint8_t {
@@ -87,6 +89,8 @@ void networks_clear();
 bool connect(char const* ssid);
 // PRECONDITION: empty or a valid WPA passphrase. Applies the next time the hotspot opens.
 void ap_password_set(char const* password);
+// The portal showed a hotspot client that we're connected: the hotspot can close.
+void ap_result_shown();
 
 // Blocks a few seconds. Returns # of distinct SSIDs (strongest first), or -1 if busy/failed.
 int scan(std::span<ScanResult> results);

@@ -59,3 +59,45 @@
 .status-hint {
   margin-top: var(--space-2);
 }
+
+.status-lost {
+  color: var(--color-warning);
+}
+
+.status-icon.pending {
+  background: #dbeafe;
+  color: var(--color-primary);
+  animation: status-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  50% { opacity: 0.4; }
+}
+
+.status-banner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin: calc(-1 * var(--space-2));
+}
+
+.status-banner .status-content {
+  width: 100%;
+}
+
+.status-banner-success {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  border: 1px solid var(--color-success);
+}
+
+.status-banner-error {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  border: 1px solid var(--color-danger);
+}
+
+.status-banner-error .status-state {
+  color: var(--color-danger);
+}

@@ -1,0 +1,62 @@
+.fan {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fan-value {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.fan-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--color-border);
+  overflow: hidden;
+}
+
+.fan-bar-fill {
+  height: 100%;
+  background: var(--color-primary);
+  transition: width 0.5s ease;
+}
+
+.sensors-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.sensors-side-title {
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+
+.sensors-side dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-3);
+}
+
+.sensors-side dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.sensors-side dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sensors-footer {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 420px) {
+  .sensors-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,6 +1,7 @@
 #include "FreeRTOS.h"  // IWYU pragma: keep
 #include "btstack_run_loop.h"
 #include "config.hpp"
+#include "diag.hpp"
 #include "display.hpp"
 #include "gatt.hpp"
 #include "gatt_stream.hpp"
@@ -11,7 +12,6 @@
 #include "pico.h"  // IWYU pragma: keep for transitive includes (e.g. board)
 #include "pico/stdio.h"
 #include "pico/time.h"
-#include "picowota/reboot.h"
 #include "sdk/i2c.hpp"
 #include "sdk/task.hpp"
 #include "sensors.hpp"
@@ -44,11 +44,12 @@ extern "C" {
 void vApplicationTickHook() {}
 
 void vApplicationStackOverflowHook(TaskHandle_t Task, char* pcTaskName) {
-    panic("PANIC - stack overflow in task %s\n", pcTaskName);
+    // no `printf`: we're inside the scheduler. Reported after the reboot.
+    diag::crashed(diag::Cause::stack_overflow, 0, 0, pcTaskName);
 }
 
 void vApplicationMallocFailedHook() {
-    panic("PANIC - heap alloc failed\n");
+    // reported (w/ the caller) & rebooted by `diag`'s `pvPortMalloc` wrapper
 }
 }
 
@@ -94,7 +95,10 @@ WatchdogSetupInfo setup_watchdog_pre_stdio() {
             .watchdog_enable_caused_reboot = watchdog_enable_caused_reboot(),
     };
 
-    picowota_watchdog_enable_bootloader(WATCHDOG_TIMEOUT / 1ms, true);
+    // Reboot into the app, not the picowota bootloader: w/o a Bluetooth host it's of no use (no
+    // USB, no Wi-Fi) and the filter would be off for its 60 s idle timeout. The app reports why
+    // it rebooted (see `diag`). The bootloader stays reachable on request (OTA updates).
+    watchdog_enable(WATCHDOG_TIMEOUT / 1ms, true);
 
     // Kinda wasteful to allocate a whole task for this.
     // Can't use a timer, they might starve/miss their deadline.
@@ -146,6 +150,7 @@ void startup(WatchdogSetupInfo const watchdog_setup_info) {
     }
 
     setup_watchdog_post_stdio(watchdog_setup_info);
+    diag::start();
 
     settings::init();
 
@@ -183,6 +188,7 @@ void startup(WatchdogSetupInfo const watchdog_setup_info) {
 }
 
 int main() {
+    diag::init();  // before anything can overwrite the previous boot's report
     // HACK: static/global b/c it's tiny and a hassle to pipe through to `startup`
     static WatchdogSetupInfo s_watchdog_setup_info = setup_watchdog_pre_stdio();
 

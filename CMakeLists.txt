@@ -54,6 +54,7 @@ project(nevermore-controller C CXX ASM)
 option(NEVERMORE_BLUETOOTH_DEBUG "bluetooth debug logging (noisy)" OFF)
 option(NEVERMORE_BLUETOOTH_LOW_LEVEL_DEBUG "bluetooth low level debug logging (very noisy)" OFF)
 option(NEVERMORE_I2C_DEBUG "I2C debug logging" OFF)
+option(NEVERMORE_DIAG "heartbeat logging: heap & tasks every 5 s" OFF)
 # feature options
 option(NEVERMORE_SETTINGS_PERSISTENCE "settings are saved/restored from flash" ON)
 # Wi-Fi transport (GATT over TCP). The Pico W lacks the RAM for lwIP alongside
@@ -152,6 +153,7 @@ target_compile_definitions(nevermore-controller PUBLIC
   NEVERMORE_BLUETOOTH_DEBUG=$<BOOL:${NEVERMORE_BLUETOOTH_DEBUG}>
   NEVERMORE_BLUETOOTH_LOW_LEVEL_DEBUG=$<BOOL:${NEVERMORE_BLUETOOTH_LOW_LEVEL_DEBUG}>
   NEVERMORE_I2C_DEBUG=$<BOOL:${NEVERMORE_I2C_DEBUG}>
+  NEVERMORE_DIAG=$<BOOL:${NEVERMORE_DIAG}>
   # feature options
   NEVERMORE_SETTINGS_PERSISTENCE=$<BOOL:${NEVERMORE_SETTINGS_PERSISTENCE}>
   NEVERMORE_WIFI=$<BOOL:${NEVERMORE_WIFI}>
@@ -211,6 +213,9 @@ endif()
 if(${NEVERMORE_PICO_W_BT})
   target_link_libraries(nevermore-controller PUBLIC pico_btstack_cyw43)
 endif()
+
+# crash reports, see `src/diag.cpp`
+target_link_options(nevermore-controller PUBLIC -Wl,--wrap=panic -Wl,--wrap=pvPortMalloc)
 
 target_compile_definitions(nevermore-controller PUBLIC
   USBD_MANUFACTURER="Nevermore"

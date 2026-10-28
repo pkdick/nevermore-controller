@@ -22,4 +22,7 @@ float fan_rpm();
 void fan_power_override(BLE::Percentage8 power);  // `NOT_KNOWN` to clear override
 BLE::Percentage8 fan_power_override();
 
+// Releases the override if `writer` set it: the fan goes back to automatic control.
+void writer_gone(gatt::Writer);
+
 }  // namespace nevermore::gatt::fan

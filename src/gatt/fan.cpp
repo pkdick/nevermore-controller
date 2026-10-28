@@ -1,5 +1,6 @@
 #include "fan.hpp"
 #include "config.hpp"
+#include "configuration.hpp"
 #include "handler_helpers.hpp"
 #include "sdk/ble_data_types.hpp"
 #include "sdk/btstack.hpp"
@@ -80,6 +81,7 @@ private:
 
 FanPowerControl g_fan;
 BLE::Percentage8 g_fan_power_override;  // not-known -> automatic control
+gatt::Writer g_fan_power_override_writer = gatt::WRITER_NONE;  // who set it (via GATT)
 
 struct [[gnu::packed]] FanPowerTachoAggregate {
     BLE::Percentage8 power = g_fan.power();
@@ -149,6 +151,7 @@ float fan_power() {
 }
 
 void fan_power_override(BLE::Percentage8 power) {
+    g_fan_power_override_writer = gatt::WRITER_NONE;  // set locally (e.g. display); GATT writes set it after
     if (g_fan_power_override == power) return;
 
     g_fan_power_override = power;
@@ -161,6 +164,16 @@ void fan_power_override(BLE::Percentage8 power) {
 
 BLE::Percentage8 fan_power_override() {
     return g_fan_power_override;
+}
+
+void writer_gone(gatt::Writer writer) {
+    if (writer == gatt::WRITER_NONE || g_fan_power_override_writer != writer) return;
+
+    g_fan_power_override_writer = gatt::WRITER_NONE;
+    if (g_fan_power_override == BLE::NOT_KNOWN) return;
+
+    printf("fan - host that forced the fan is gone, back to automatic control\n");
+    fan_power_override(BLE::NOT_KNOWN);
 }
 
 void fan_pwm_frequency_apply() {
@@ -206,6 +219,9 @@ bool init() {
             // auto _ = sensors::sensors_guard();
             g_instance(sensors::g_sensors);
         });
+
+        // Idle: resume VOC calibration if a host paused it then went away.
+        if (perc == 0) configuration::calibration_resume_if_abandoned();
 
         if (g_fan_power_override == BLE::NOT_KNOWN) {
             if (0 < perc)
@@ -283,7 +299,9 @@ optional<int> attr_write(hci_con_handle_t conn, uint16_t attr, span<uint8_t cons
         WRITE_CLIENT_CFG(FAN_AGGREGATE, g_notify_aggregate)
 
     case HANDLE_ATTR(FAN_POWER_OVERRIDE, VALUE): {
-        fan_power_override((BLE::Percentage8)consume);
+        BLE::Percentage8 const power = consume;
+        fan_power_override(power);
+        if (power != BLE::NOT_KNOWN) g_fan_power_override_writer = gatt::writer(conn);
         return 0;
     }
 

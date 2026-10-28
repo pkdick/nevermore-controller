@@ -37,9 +37,9 @@ optional<uint16_t> read(uint16_t attr, span<uint8_t> buffer) {
     return gatt::read(attr, buffer);
 }
 
-optional<uint16_t> write(uint16_t attr, span<uint8_t const> buffer) {
+optional<uint16_t> write(uint16_t attr, span<uint8_t const> buffer, gatt::Writer writer) {
     auto _ = lock_guard();
-    return gatt::write(attr, buffer);
+    return gatt::write(attr, buffer, writer);
 }
 
 }  // namespace nevermore::gatt_stream

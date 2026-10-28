@@ -39,6 +39,10 @@ struct TcpStream {
         return "GATT TCP";
     }
 
+    [[nodiscard]] gatt::Writer writer() const {
+        return gatt::WRITER_TCP;
+    }
+
     [[nodiscard]] bool recv(span<uint8_t> dst) {
         while (!dst.empty()) {
             auto const n = lwip_recv(fd, dst.data(), dst.size(), 0);
@@ -106,6 +110,7 @@ struct TcpStream {
 
         lwip_close(fd);
         fd = -1;
+        gatt::writer_gone(gatt::WRITER_TCP);  // network down, Klipper stopped, replaced by a new client, ...
     }
 };
 

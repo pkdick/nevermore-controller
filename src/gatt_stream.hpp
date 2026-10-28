@@ -7,6 +7,7 @@
 //      void send(std::span<char const>);   // may buffer; must tolerate a lost connection
 //      void flush();
 //      char const* name() const;           // for logging
+//      gatt::Writer writer() const;        // who's writing, see `gatt::Writer`
 
 #include "gatt.hpp"
 #include <array>
@@ -37,7 +38,7 @@ static_assert(sizeof(Cmd) == 1, "protocol req");
 void init();  // call before launching any stream transport
 std::span<uint8_t const> database();
 std::optional<uint16_t> read(uint16_t attr, std::span<uint8_t>);
-std::optional<uint16_t> write(uint16_t attr, std::span<uint8_t const>);
+std::optional<uint16_t> write(uint16_t attr, std::span<uint8_t const>, gatt::Writer);
 
 namespace detail {
 
@@ -132,7 +133,7 @@ void attr_write(Stream& stream) {
     std::span data_subset{data.begin(), data.begin() + *size};
     if (!stream.recv(data_subset)) return;  // EOF while reading payload
 
-    auto result = gatt_stream::write(*attr, data_subset);
+    auto result = gatt_stream::write(*attr, data_subset, stream.writer());
     if (!result) {
         printf("ERR - %s - write to unknown attr=%d size=%d\n", stream.name(), *attr, *size);
     }

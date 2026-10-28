@@ -1322,6 +1322,8 @@ On exiting "print mode":
 
 These commands are automatically re-issued to a controller when they reconnect after losing connection.
 
+If the connection is lost (network down, Klipper stopped, USB unplugged), the controller doesn't keep what that host set: a fan override set by it is released (back to automatic control, which filters on its own when VOCs rise), and VOC calibration it suspended resumes once the controller is done filtering. Overrides set on the display are kept. A dead network link is noticed within about 25 s (TCP keep-alive).
+
 [#fan-control]
 === Fan Control & Macros
 

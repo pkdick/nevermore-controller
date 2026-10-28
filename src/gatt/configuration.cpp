@@ -23,6 +23,10 @@ constexpr auto REBOOT_DELAY = 200ms;
 // Use a task instead of a timer in case a timer misbehaves and blocks.
 Task g_reboot_task;
 
+// Who paused VOC calibration (via GATT), and whether it went away since.
+gatt::Writer g_voc_calibration_paused_by = gatt::WRITER_NONE;
+bool g_voc_calibration_abandoned = false;
+
 void reboot_delayed(bool to_bootloader) {
     xTaskNotify(g_reboot_task, to_bootloader, eSetValueWithoutOverwrite);
 }
@@ -54,6 +58,23 @@ bool init() {
 }
 
 void disconnected(hci_con_handle_t) {}
+
+void writer_gone(gatt::Writer writer) {
+    if (writer == gatt::WRITER_NONE || g_voc_calibration_paused_by != writer) return;
+
+    g_voc_calibration_paused_by = gatt::WRITER_NONE;
+    g_voc_calibration_abandoned = !settings::g_active.voc_calibration_enabled;
+}
+
+void calibration_resume_if_abandoned() {
+    if (!g_voc_calibration_abandoned) return;
+
+    g_voc_calibration_abandoned = false;
+    if (settings::g_active.voc_calibration_enabled) return;
+
+    printf("VOC - host that paused calibration is gone, resuming it\n");
+    settings::g_active.voc_calibration_enabled = true;
+}
 
 optional<uint16_t> attr_read(
         hci_con_handle_t const conn, uint16_t const attr, uint16_t const offset, span<uint8_t> const buffer) {
@@ -153,6 +174,8 @@ optional<int> attr_write(hci_con_handle_t conn, uint16_t attr, span<uint8_t cons
         if (value != 0 && value != 1) return ATT_ERROR_VALUE_NOT_ALLOWED;
 
         settings::g_active.voc_calibration_enabled = !!value;
+        g_voc_calibration_paused_by = value ? gatt::WRITER_NONE : gatt::writer(conn);
+        g_voc_calibration_abandoned = false;
         return 0;
     }
 

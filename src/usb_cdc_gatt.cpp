@@ -22,6 +22,10 @@ struct UsbCdcStream {
         return "USB CDC";
     }
 
+    [[nodiscard]] gatt::Writer writer() const {
+        return gatt::WRITER_USB;
+    }
+
     [[nodiscard]] bool recv(span<uint8_t> dst) {
         auto const end = dst.end();
         for (auto curr = dst.begin(); curr != end;) {
@@ -60,6 +64,7 @@ struct UsbCdcStream {
 
 void usb_cdc_gatt_task() {
     UsbCdcStream stream;
+    bool connected = false;
 
     for (;;) {
         // HACK: Don't read before there's a connection. It causes panics
@@ -69,9 +74,14 @@ void usb_cdc_gatt_task() {
         //                      Power on application w/ USB unplugged.
         //                      Plug in USB -> panic.
         if (!tud_cdc_n_connected(GATT_ITF)) {
+            if (connected) {  // host closed the port (Klipper stopped, cable unplugged, ...)
+                connected = false;
+                gatt::writer_gone(gatt::WRITER_USB);
+            }
             task_delay<NOT_CONNECTED_YIELD_PERIOD>();
             continue;
         }
+        connected = true;
 
         auto const c = tud_cdc_n_read_char(GATT_ITF);
         if (c < 0) {  // failed or timeout, try again in a bit

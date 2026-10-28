@@ -41,6 +41,8 @@ namespace nevermore::gatt {
 
 namespace {
 
+Writer g_stream_writer = WRITER_NONE;  // writer of the stream write in progress
+
 // coincidentally packed b/c all `bt::advert` funcs return only tuples of packed members
 constexpr tuple ADVERT{
         flags({
@@ -83,6 +85,7 @@ void hci_handler(uint8_t packet_type, [[maybe_unused]] uint16_t channel, uint8_t
 #define FOREACH_SERVICE_ACTION(x) x::disconnected(conn);
         FOREACH_SERVICE()
 #undef FOREACH_SERVICE_ACTION
+        writer_gone(conn);
     } break;
     }
 }
@@ -194,8 +197,21 @@ optional<uint16_t> read(uint16_t attr, span<uint8_t> buffer) {
     return attr_read(HCI_CON_HANDLE_INVALID, attr, 0, buffer);
 }
 
-optional<uint16_t> write(uint16_t attr, std::span<uint8_t const> buffer) {
-    return attr_write(HCI_CON_HANDLE_INVALID, attr, 0, buffer);
+optional<uint16_t> write(uint16_t attr, std::span<uint8_t const> buffer, Writer writer) {
+    // Stream writes are serialised by `gatt_stream`; BLE ones don't look at this.
+    g_stream_writer = writer;
+    auto const r = attr_write(HCI_CON_HANDLE_INVALID, attr, 0, buffer);
+    g_stream_writer = WRITER_NONE;
+    return r;
+}
+
+Writer writer(uint16_t conn) {
+    return conn != HCI_CON_HANDLE_INVALID ? Writer(conn) : g_stream_writer;
+}
+
+void writer_gone(Writer writer) {
+    fan::writer_gone(writer);
+    configuration::writer_gone(writer);
 }
 
 }  // namespace nevermore::gatt

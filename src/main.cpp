@@ -95,9 +95,9 @@ WatchdogSetupInfo setup_watchdog_pre_stdio() {
             .watchdog_enable_caused_reboot = watchdog_enable_caused_reboot(),
     };
 
-    // Reboot into the app, not the picowota bootloader: w/o a Bluetooth host it's of no use (no
-    // USB, no Wi-Fi) and the filter would be off for its 60 s idle timeout. The app reports why
-    // it rebooted (see `diag`). The bootloader stays reachable on request (OTA updates).
+    // Reboot into the app, not the picowota bootloader: nobody is there to flash an update, so
+    // the filter would be off for its 60 s idle timeout. The app reports why it rebooted (see
+    // `diag`). The bootloader stays reachable on request (OTA updates over USB or Bluetooth).
     watchdog_enable(WATCHDOG_TIMEOUT / 1ms, true);
 
     // Kinda wasteful to allocate a whole task for this.

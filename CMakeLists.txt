@@ -117,6 +117,19 @@ file(GLOB_RECURSE SRC_C   CONFIGURE_DEPENDS "${SRC_DIR}/*.c")
 file(GLOB_RECURSE SRC_HPP CONFIGURE_DEPENDS "${SRC_DIR}/*.hpp")
 file(GLOB_RECURSE SRC_CPP CONFIGURE_DEPENDS "${SRC_DIR}/*.cpp")
 set(SRC_FILES ${SRC_H} ${SRC_C} ${SRC_HPP} ${SRC_CPP})
+if(NEVERMORE_WIFI)
+  # Captive portal web UI, built from `portal/` (`npm run build`) & committed in `portal/dist`.
+  include(cmake/embed_files.cmake)
+  set(PORTAL_DIST "${CMAKE_SOURCE_DIR}/portal/dist")
+  nevermore_embed_files("${CMAKE_BINARY_DIR}/generated/portal_assets.c"
+    nevermore_portal_index_html "${PORTAL_DIST}/index.html"
+    nevermore_portal_app_js_gz "${PORTAL_DIST}/assets/app.js.gz"
+    nevermore_portal_index_css_gz "${PORTAL_DIST}/assets/index.css.gz"
+  )
+  list(APPEND SRC_FILES "${CMAKE_BINARY_DIR}/generated/portal_assets.c")
+else()
+  list(FILTER SRC_FILES EXCLUDE REGEX "/src/wifi/")  # Wi-Fi-only sources
+endif()
 
 add_library(nevermore-controller ${SRC_FILES})
 target_include_directories(nevermore-controller PUBLIC

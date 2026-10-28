@@ -1,0 +1,22 @@
+.signal-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+}
+
+.signal-bars .bar {
+  width: 4px;
+  background: var(--color-border);
+  border-radius: 1px;
+}
+
+.signal-bars .bar:nth-child(1) { height: 20%; }
+.signal-bars .bar:nth-child(2) { height: 40%; }
+.signal-bars .bar:nth-child(3) { height: 60%; }
+.signal-bars .bar:nth-child(4) { height: 80%; }
+.signal-bars .bar:nth-child(5) { height: 100%; }
+
+.signal-bars .bar.filled {
+  background: var(--color-success);
+}

@@ -174,8 +174,9 @@ optional<int> attr_write(hci_con_handle_t conn, uint16_t attr, span<uint8_t cons
     case HANDLE_ATTR(CONFIG_WIFI_CREDENTIALS, VALUE): {
         if constexpr (!NEVERMORE_WIFI) return ATT_ERROR_REQUEST_NOT_SUPPORTED;
 
-        // Empty SSID -> forget credentials & disable Wi-Fi.
-        settings::WifiCredentials credentials;
+        // Saves the network as the first one to try & joins it.
+        // Empty SSID -> forget all networks (the configuration hotspot opens).
+        settings::WifiNetwork credentials{};
         auto const field = [&](auto& dst) -> bool {
             uint8_t const length = consume;
             if (dst.size() <= length) return false;  // need room for the NUL
@@ -190,7 +191,12 @@ optional<int> attr_write(hci_con_handle_t conn, uint16_t attr, span<uint8_t cons
         if (consume.remaining()) return ATT_ERROR_INVALID_ATTRIBUTE_VALUE_LENGTH;
         if (!credentials.validate()) return ATT_ERROR_VALUE_NOT_ALLOWED;
 
-        wifi::credentials_set(credentials);
+        if (credentials.used()) {
+            wifi::network_add(credentials);
+            wifi::connect(credentials.ssid.data());
+        } else {
+            wifi::networks_clear();
+        }
         return 0;
     }
 

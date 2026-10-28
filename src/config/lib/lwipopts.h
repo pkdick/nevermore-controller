@@ -21,9 +21,9 @@
 #define MEM_SIZE (16 * 1024)
 #define MEMP_NUM_TCP_SEG 32
 #define MEMP_NUM_ARP_QUEUE 10
-#define MEMP_NUM_NETCONN 8
-#define MEMP_NUM_UDP_PCB 6
-#define MEMP_NUM_TCP_PCB 6
+#define MEMP_NUM_NETCONN 12  // GATT TCP (listener + client) + portal (listener + clients)
+#define MEMP_NUM_UDP_PCB 8   // DHCP & DNS clients, mDNS, hotspot DHCP & DNS servers
+#define MEMP_NUM_TCP_PCB 12  // includes TIME_WAIT leftovers of portal requests
 #define MEMP_NUM_SYS_TIMEOUT (LWIP_NUM_SYS_TIMEOUT_INTERNAL + 8)  // + mDNS
 #define PBUF_POOL_SIZE 24
 
@@ -74,7 +74,7 @@
 #define DEFAULT_RAW_RECVMBOX_SIZE 8
 #define DEFAULT_UDP_RECVMBOX_SIZE 8
 #define DEFAULT_TCP_RECVMBOX_SIZE 8
-#define DEFAULT_ACCEPTMBOX_SIZE 4
+#define DEFAULT_ACCEPTMBOX_SIZE 8  // browsers open several connections at once
 #define LWIP_TCPIP_CORE_LOCKING_INPUT 1
 #ifdef CYW43_TASK_PRIORITY
 // same as the CYW43 driver & other comms; lowest-priority tasks shouldn't stall the network

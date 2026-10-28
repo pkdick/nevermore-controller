@@ -462,14 +462,35 @@ void SettingsV0::merge_valid_fields(SettingsV0 const& x) {
     if (x.wifi.validate()) wifi = x.wifi;
 }
 
-bool WifiCredentials::validate() const {
-    // `strnlen` isn't available in strict C++ mode
-    auto const length = [](auto const& xs) { return size_t(find(xs.begin(), xs.end(), 0) - xs.begin()); };
+namespace {
+
+// `strnlen` isn't available in strict C++ mode
+template <size_t N>
+size_t length(array<char, N> const& xs) {
+    return size_t(find(xs.begin(), xs.end(), 0) - xs.begin());
+}
+
+}  // namespace
+
+bool WifiNetwork::validate() const {
     auto const ssid_len = length(ssid);
     auto const password_len = length(password);
     if (ssid_len == ssid.size() || password_len == password.size()) return false;  // not terminated
-    if (ssid_len == 0) return password_len == 0;  // disabled -> no stray password
+    if (ssid_len == 0) return password_len == 0;  // unused -> no stray password
     return password_len == 0 || PASSWORD_MIN <= password_len;
+}
+
+bool WifiSettings::validate() const {
+    bool unused_seen = false;
+    for (auto const& network : networks) {
+        if (!network.validate()) return false;
+        if (network.used() && unused_seen) return false;  // used slots must come first
+        unused_seen |= !network.used();
+    }
+
+    auto const ap_password_len = length(ap_password);
+    if (ap_password_len == ap_password.size()) return false;  // not terminated
+    return ap_password_len == 0 || WifiNetwork::PASSWORD_MIN <= ap_password_len;
 }
 
 }  // namespace nevermore::settings

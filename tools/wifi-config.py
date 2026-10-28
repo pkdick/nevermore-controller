@@ -17,9 +17,12 @@ exit 0 # required to stop shell execution here
 
 __doc__ = """Script for configuring the Wi-Fi (GATT over TCP) of Nevermore controllers.
 
-Typically run once over USB (`--serial .../usb-Nevermore_..._-if02`).
-Afterwards the controller can be reached w/ `--network <host>` and Klipper's
-`network_address` option."""
+The controller remembers up to 5 networks, tried in order. `--ssid` saves a
+network as the first one to try & joins it. Without any reachable network the
+controller opens a configuration hotspot (`Nevermore-XXXX`, portal at
+http://192.168.4.1/) which does the same from a phone; this tool is the USB
+alternative. Afterwards the controller can be reached w/ `--network <host>`
+and Klipper's `network_address` option."""
 
 import asyncio
 import enum
@@ -54,7 +57,7 @@ class WifiState(enum.IntEnum):
 
 WIFI_STATE_DESCRIPTION = {
     WifiState.UNSUPPORTED: "not supported by this firmware build",
-    WifiState.DISABLED: "disabled (no credentials)",
+    WifiState.DISABLED: "no network saved",
     WifiState.CONNECTING: "connecting...",
     WifiState.CONNECTED: "connected",
     WifiState.FAILED_AUTH: "failed: wrong password",
@@ -68,22 +71,27 @@ class WifiStatus:
     state: WifiState
     ipv4: str
     port: int
+    hotspot: bool
 
     FORMAT = struct.Struct("<B4sH")
 
     @staticmethod
     def parse(raw: bytes) -> 'WifiStatus':
         state, ipv4, port = WifiStatus.FORMAT.unpack(raw[: WifiStatus.FORMAT.size])
+        # appended field, absent in older firmware
+        hotspot = len(raw) > WifiStatus.FORMAT.size and raw[WifiStatus.FORMAT.size] != 0
         try:
             state = WifiState(state)
         except ValueError:
             state = WifiState.FAILED
-        return WifiStatus(state, ".".join(str(x) for x in ipv4), port)
+        return WifiStatus(state, ".".join(str(x) for x in ipv4), port, hotspot)
 
     def __str__(self) -> str:
         desc = WIFI_STATE_DESCRIPTION[self.state]
         if self.state == WifiState.CONNECTED:
-            return f"{desc}; address {self.ipv4}, port {self.port}"
+            desc = f"{desc}; address {self.ipv4}, port {self.port}"
+        if self.hotspot:
+            desc += "; configuration hotspot open (http://192.168.4.1/)"
         return desc
 
 
@@ -92,7 +100,9 @@ class CmdLnArgs(NevermoreToolCmdLnArgs):
     password: Optional[str] = tap.arg(
         help="Wi-Fi password (prompted for if omitted; empty for an open network)"
     )
-    forget: bool = tap.arg(help="forget credentials & disable Wi-Fi", default=False)
+    forget: bool = tap.arg(
+        help="forget all saved networks (the configuration hotspot opens)", default=False
+    )
     status: bool = tap.arg(help="only show the Wi-Fi status", default=False)
     wait: float = tap.arg(
         help="seconds to wait for the controller to connect", default=45
@@ -161,10 +171,10 @@ async def configure(args: CmdLnArgs, transport: Transport, blob: bytes) -> bool:
         return False
 
     if args.forget:
-        print("Wi-Fi credentials forgotten.")
+        print("All saved networks forgotten.")
         return True
 
-    print("Credentials sent. They are saved to flash within ~10 seconds.")
+    print("Network saved as the first to try; flash is updated within ~10 seconds.")
     status = await status_wait(transport, args.wait)
     if status.state != WifiState.CONNECTED:
         print("Not connected yet. The controller keeps retrying; check with `--status`.")

@@ -93,23 +93,38 @@ struct [[gnu::packed]] FlagBitSet {
 };
 static_assert(sizeof(FlagBitSet) == 8);
 
-// Wi-Fi station credentials. An empty SSID disables Wi-Fi.
-// Zero-initialised by default (i.e. disabled).
-struct [[gnu::packed]] WifiCredentials {
-    static constexpr size_t SSID_MAX = 32;        // 802.11 limit
-    static constexpr size_t PASSWORD_MIN = 8;     // WPA passphrase limits
+// A Wi-Fi network to join. An empty SSID marks an unused slot.
+// Trivial (no member initialisers) so it can live in the packed settings: value-initialise (`{}`).
+struct [[gnu::packed]] WifiNetwork {
+    static constexpr size_t SSID_MAX = 32;     // 802.11 limit
+    static constexpr size_t PASSWORD_MIN = 8;  // WPA passphrase limits
     static constexpr size_t PASSWORD_MAX = 63;
 
-    std::array<char, SSID_MAX + 1> ssid{};          // NUL terminated
-    std::array<char, PASSWORD_MAX + 1> password{};  // NUL terminated; empty -> open network
+    std::array<char, SSID_MAX + 1> ssid;          // NUL terminated
+    std::array<char, PASSWORD_MAX + 1> password;  // NUL terminated; empty -> open network
 
-    [[nodiscard]] bool enabled() const {
+    [[nodiscard]] bool used() const {
         return ssid[0] != '\0';
     }
     [[nodiscard]] bool validate() const;
 
-    bool operator==(WifiCredentials const&) const = default;
+    bool operator==(WifiNetwork const&) const = default;
 };
+
+// Value-initialised (`{}`): no networks (hotspot on), default hotspot password.
+struct [[gnu::packed]] WifiSettings {
+    static constexpr size_t NETWORKS_MAX = 5;
+
+    // Tried in order. Used slots first, unused (empty) slots at the end.
+    std::array<WifiNetwork, NETWORKS_MAX> networks;
+    // Configuration hotspot's WPA2 password. Empty -> `wifi::AP_PASSWORD_DEFAULT`.
+    std::array<char, WifiNetwork::PASSWORD_MAX + 1> ap_password;
+
+    [[nodiscard]] bool validate() const;
+
+    bool operator==(WifiSettings const&) const = default;
+};
+static_assert(std::is_trivial_v<WifiSettings> && sizeof(WifiSettings) == 5 * (33 + 64) + 64, "layout is persisted");
 
 template <std::unsigned_integral Store, float Lo, float Hi>
 struct [[gnu::packed]] PeriodSecInverse {
@@ -160,7 +175,7 @@ struct [[gnu::packed]] SettingsV0 {
     BLE::Percentage8 fan_power_min = 17.5;           // Delta BFB0712HF
     BLE::Percentage8 fan_power_kick_start_min = 18;  // Delta BFB0712HF
     BLE::Count16 fan_pwm_frequency_hz = 25'000;
-    WifiCredentials wifi;
+    WifiSettings wifi{};
 
     // replaces valid fields from RHS into self
     void merge_valid_fields(SettingsV0 const&);

@@ -459,16 +459,34 @@ NOTE: Pico 2 W (RP2350, Arm cores only) builds use `-DPICO_BOARD=pico2_w -DPICO_
 
 Pico 2 W builds can also talk to Klipper over Wi-Fi, using the same protocol as the USB `-if02` interface carried over TCP (port 7700). The Pico W lacks the RAM for this alongside everything else, so its builds don't include it (`-DNEVERMORE_WIFI=ON` forces it).
 
-Credentials are stored in the controller's settings (flash), not in the firmware image. Set them once over USB:
+The controller remembers up to 5 networks (in its settings/flash, not in the firmware image) and tries them in order.
+
+=== Configuration Hotspot
+
+When no network is saved, or none could be joined for 2 minutes, the controller opens a hotspot:
+
+* Network `Nevermore-XXXX`, password `nevermore`.
+* Joining it from a phone or laptop opens the configuration portal; if it doesn't, browse to http://192.168.4.1/.
+* The portal scans for networks (name & signal strength), and saves the chosen one with its password.
+* Saved networks can be listed and removed there.
+* Once connected, the hotspot closes after a minute. The controller keeps retrying its networks meanwhile.
+
+The hotspot password can be changed with `curl -X PUT -d '{"password":"<8 to 63 characters>"}' http://192.168.4.1/api/wifi/ap/config` (from a device on the hotspot). The portal only answers devices on the hotspot.
+
+The web UI is in `portal/`, adapted from https://github.com/tuanpmt/esp_wifi_manager[esp_wifi_manager] (MIT).
+
+=== Over USB
 
 ```bash
 ./tools/wifi-config.py --serial /dev/serial/by-id/usb-Nevermore_Filter_pico2_w_<device-id>-if02 --ssid <network name>
 ```
 
-The password is prompted for. The tool waits for the connection and prints the controller's address. Other commands:
+The password is prompted for. The network is saved as the first to try. The tool waits for the connection and prints the controller's address. Other commands:
 
 * `--status`: show the Wi-Fi status (also works with `--network <address>`).
-* `--forget`: forget the credentials and turn Wi-Fi off.
+* `--forget`: forget all saved networks (the hotspot opens).
+
+=== Klipper
 
 Then use `network_address` instead of `serial` / `bt_address` in Klipper's `[nevermore]` section. The controller also announces itself via mDNS as `nevermore.local`. A DHCP reservation on the router (fixed IP) is the most robust choice.
 

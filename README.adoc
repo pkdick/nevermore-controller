@@ -495,7 +495,16 @@ The password is prompted for. The network is saved as the first to try. The tool
 
 Then use `network_address` instead of `serial` / `bt_address` in Klipper's `[nevermore]` section. The controller also announces itself via mDNS as `nevermore.local`. A DHCP reservation on the router (fixed IP) is the most robust choice.
 
-NOTE: Anyone on the local network can control the filter through this port; there is no authentication. Keep it on a trusted network. OTA updates (`update_ota.py`) still need USB or BT, since the bootloader has no Wi-Fi.
+NOTE: Anyone on the local network can control the filter through this port (or update its firmware, see below); there is no authentication. Keep it on a trusted network.
+
+=== OTA Updates
+
+`./tools/update_ota.py --network <address> --file picowota_ota-nevermore-controller_pico2_w.uf2` updates the controller over Wi-Fi. The bootloader joins the same saved networks as the controller (they aren't part of the image) and listens on TCP port 4242.
+
+* Stop Klipper first if it's connected over Wi-Fi: the controller serves one TCP client at a time.
+* The address is resolved before the controller reboots into its bootloader, which doesn't answer mDNS. If the controller is already in its bootloader, pass its IP address.
+* An interrupted update leaves an incomplete image, which keeps the bootloader running (and on the network): run the update again. With nobody connecting, the bootloader goes back to an intact controller after 60 s.
+* Networks that only accept WPA3 aren't supported by the bootloader. A controller running an older firmware needs one update over USB or BT first: it installs the Wi-Fi capable bootloader.
 
 == Controller Customisation
 

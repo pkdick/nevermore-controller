@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from typing import Any, Callable, Coroutine, Optional
 
 from bleak import BleakClient, BleakScanner
@@ -25,6 +26,22 @@ __all__ = [
     'NevermoreToolCmdLnArgs',
     'device_address_discover',
 ]
+
+
+# Network connections are refused while the controller reboots or joins the Wi-Fi: retry a while.
+NETWORK_CONNECT_TIMEOUT_DEFAULT = 30  # seconds
+
+
+async def _network_open(url: str, baud_rate: int, timeout: Optional[float]):
+    deadline = time.monotonic() + (NETWORK_CONNECT_TIMEOUT_DEFAULT if timeout is None else timeout)
+    while True:
+        try:
+            return serial_open(url, baud_rate, timeout)
+        except serial.SerialException as e:
+            if deadline < time.monotonic():
+                print(f"unable to connect: {e}")
+                return None
+            await asyncio.sleep(1)
 
 
 class NevermoreToolCmdLnArgs(tap.TypedArgs):
@@ -71,6 +88,12 @@ class NevermoreToolCmdLnArgs(tap.TypedArgs):
             try:
                 if timeout is not None and self.network is None:
                     timeout /= 5  # serial connections don't need as long
+
+                if self.network is not None:
+                    port = await _network_open(path, self.baud_rate, timeout)
+                    if port is None:  # rebooting, off the network, or in its bootloader
+                        return None
+                    return TransportSerial(port)
 
                 return TransportSerial(
                     serial_open(path, self.baud_rate, timeout, exclusive=True)
